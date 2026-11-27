@@ -2,6 +2,7 @@ import { searchPlaces, reversePlace, getRoutes, getForecasts, getAlerts } from '
 import { sampleRoute, evaluate, scan, band, CAT_VAR, BREAKS, withBreaks } from './model.js';
 import { weatherIcon, icon } from './icons.js';
 import { drawPoster } from './poster.js';
+import { track } from './analytics.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -10,20 +11,6 @@ const store = {
   get(k, fallback = null) { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-// ---------- Optional analytics (GoatCounter: no cookies, no personal data) ----------
-const GC_CODE = document.querySelector('meta[name="wtt-goatcounter"]')?.content.trim();
-if (GC_CODE && /^[a-z0-9-]+$/i.test(GC_CODE)) {
-  const sc = document.createElement('script');
-  sc.async = true;
-  sc.src = 'https://gc.zgo.at/count.js';
-  sc.dataset.goatcounter = `https://${GC_CODE}.goatcounter.com/count`;
-  document.head.appendChild(sc);
-}
-/** Count a product event (no-op unless analytics is configured). */
-function track(name) {
-  try { window.goatcounter?.count?.({ path: `event/${name}`, title: name, event: true }); } catch { /* ignore */ }
-}
-
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
 // ===================================================================

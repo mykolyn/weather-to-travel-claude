@@ -6,7 +6,7 @@
 // network. Relaying cross-origin requests through a service worker misbehaved in Safari (hung
 // requests, "access control" failures on map files). The page keeps its own copy of the last
 // good API answers for offline use (see api.js).
-const VERSION = 'wtt-v7';
+const VERSION = 'wtt-v8';
 const SHELL = `${VERSION}-shell`;
 const PAGE_DATA = 'wtt-data-v1'; // owned by the page (api.js); keep it across updates
 
@@ -21,6 +21,7 @@ const SHELL_FILES = [
   './assets/js/model.js',
   './assets/js/icons.js',
   './assets/js/poster.js',
+  './assets/js/analytics.js',
   './assets/vendor/maplibre-gl-4.7.1/maplibre-gl.js',
   './assets/vendor/maplibre-gl-4.7.1/maplibre-gl.css',
   './assets/img/favicon.svg',

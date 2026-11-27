@@ -58,15 +58,18 @@ npm test
 
 They run on every push and pull request (`.github/workflows/pages.yml`), and the site only deploys when they pass. To refresh the fixtures, run `npm run serve` in one terminal and `npm run test:record` in another.
 
-## Analytics (optional)
+## Analytics (visitor tracking)
 
-Privacy-friendly [GoatCounter](https://www.goatcounter.com/) support is built in but off. Create a free GoatCounter site, then put its code in `index.html`:
+Privacy-friendly [GoatCounter](https://www.goatcounter.com/) is built in. It uses no cookies, collects no personal data and needs no consent banner. It stays off until a site code is set.
 
-```html
-<meta name="wtt-goatcounter" content="your-code">
-```
+1. Create a free account at goatcounter.com and pick a code, e.g. `weathertotravel`. Your dashboard will be `https://weathertotravel.goatcounter.com`.
+2. Put the code in **both** `index.html` and `case-study.html`:
+   ```html
+   <meta name="wtt-goatcounter" content="weathertotravel">
+   ```
+3. Push to `main`. The deploy picks it up.
 
-It counts page views plus a few events (plan, switch route, breaks, poster). It sets no cookies and collects no personal data.
+What gets counted: page views (by page only), referrers, rough location, browser and screen size, plus product events: `plan`, `switch-route`, `breaks-*`, `poster` and `opened-shared-link`. Trip links contain the places people search for, so only the page path is ever sent, never the query string (`assets/js/analytics.js`; covered by `tests/analytics.spec.mjs`).
 
 ## Case study
 
