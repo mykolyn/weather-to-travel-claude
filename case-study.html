@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weather to Travel — Case study</title>
+  <meta name="description" content="How a broken bootcamp project became a route-aware road-trip forecaster: the insight, the design system, and the engineering decisions.">
+  <meta name="theme-color" content="#F3EFE6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0D1016" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Sans:wdth,wght@75..100,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try { const t = localStorage.getItem('wtt-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body class="cs">
+  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Weather to Travel, open the app">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="26" cy="14" r="8" class="bm-sun"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/></svg>
+      <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+    </a>
+    <nav class="topnav" aria-label="Case study sections">
+      <a href="#before">Before</a>
+      <a href="#insight">Insight</a>
+      <a href="#design">Design</a>
+      <a href="#engineering">Engineering</a>
+    </nav>
+    <div class="topbar-tools">
+      <a class="cta cta-small cs-open" href="./"><span>Open the app</span><svg class="ico"><use href="#i-arrow"/></svg></a>
+    </div>
+  </header>
+
+  <main class="cs-main">
+    <section class="cs-hero">
+      <p class="eyebrow"><span class="eyebrow-dot"></span>Case study</p>
+      <h1 class="cs-title">From a broken bootcamp project to a forecast for the whole drive.</h1>
+      <p class="cs-lede">Weather to Travel began as a four-person bootcamp app: type two places, see the weather in cities along the route. Years later it no longer worked at all. This is the story of the rebuild: what was broken, the one insight the redesign hangs on, and the decisions behind the design and the code.</p>
+      <dl class="cs-meta">
+        <div><dt>Original</dt><dd>Bootcamp team project — Hebah, Jennifer, Michael, Tyler</dd></div>
+        <div><dt>Rebuild</dt><dd>Product, visual &amp; interaction design, front-end engineering</dd></div>
+        <div><dt>Stack</dt><dd>Vanilla JS modules, MapLibre GL, Open-Meteo, OSRM, Photon, NWS</dd></div>
+        <div><dt>Ships as</dt><dd>Static site on GitHub Pages · installable PWA</dd></div>
+      </dl>
+      <figure class="cs-figure cs-wide">
+        <img src="assets/img/case/after-hero.jpg" width="1440" height="900" alt="The new Weather to Travel landing page: a bold headline, a trip planner card and an isometric pen drawing of a road crossing sun, cloud and rain.">
+      </figure>
+    </section>
+
+    <section class="cs-section" id="before" aria-labelledby="beforeTitle">
+      <p class="cs-num">01</p>
+      <div class="cs-body">
+        <h2 id="beforeTitle">Where it started</h2>
+        <p>The original idea was good: weather changes between cities, so a road trip deserves more than the destination's forecast. The execution hadn't aged well. Opening it today, the map refuses to load and the forecast table stays empty.</p>
+        <figure class="cs-figure">
+          <img src="assets/img/case/before-route.jpg" width="1440" height="900" loading="lazy" alt="The original route page today: a Google Maps error dialog over a watermarked map, and an empty weather table header.">
+          <figcaption>The original route page, as it loads today.</figcaption>
+        </figure>
+        <ul class="cs-list cs-list-x">
+          <li><svg class="ico"><use href="#i-x"/></svg><span><strong>Secrets in public.</strong> Google Maps and OpenWeather keys were hard-coded in the client and committed to a public repo.</span></li>
+          <li><svg class="ico"><use href="#i-x"/></svg><span><strong>A dead dependency.</strong> Directions went through <code>cors-anywhere.herokuapp.com</code>, a demo proxy that has since been shut down.</span></li>
+          <li><svg class="ico"><use href="#i-x"/></svg><span><strong>Right place, wrong time.</strong> It showed the <em>current</em> forecast for each city, not the weather when you'd actually arrive there.</span></li>
+          <li><svg class="ico"><use href="#i-x"/></svg><span><strong>Timing by guesswork.</strong> A hard-coded two-second <code>delay()</code> waited for route data before asking for weather.</span></li>
+          <li><svg class="ico"><use href="#i-x"/></svg><span><strong>A table, not an answer.</strong> Seven columns of raw numbers per city, and no verdict on whether to go.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="cs-section" id="insight" aria-labelledby="insightTitle">
+      <p class="cs-num">02</p>
+      <div class="cs-body">
+        <h2 id="insightTitle">The insight</h2>
+        <blockquote class="cs-quote">The forecast that matters is the one for where you'll be, at the moment you'll be there.</blockquote>
+        <p>A driver leaving San Jose at 5 AM doesn't care about Lake Tahoe's weather "today". They care about the fog near Davis at 6:40 and the pass above Placerville at 8:10. Everything in the redesign follows from that reframe:</p>
+        <ul class="cs-list">
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>Checkpoints, not cities.</strong> The route is sampled every few dozen miles and each point gets an ETA from per-segment drive times.</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>One number, then the detail.</strong> Rain, snow, ice, fog, gusts and official alerts roll up into a 0–100 road score with a plain-language verdict.</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>Time is the lever.</strong> If the user can't change the weather, they can change when they leave. A 72-hour chart scores every departure hour.</span></li>
+        </ul>
+        <figure class="cs-figure">
+          <img src="assets/img/case/after-results.jpg" width="1440" height="900" loading="lazy" alt="Results for San Jose to South Lake Tahoe: two route cards, a road score of 49 described as a mixed bag, a 72-hour departure chart, and a map with the route coloured by weather.">
+          <figcaption>Two routes to Tahoe, each scored for the selected departure. The verdict names the problem, where and when it happens, and a better option.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="cs-section" id="design" aria-labelledby="designTitle">
+      <p class="cs-num">03</p>
+      <div class="cs-body">
+        <h2 id="designTitle">Design decisions</h2>
+        <h3>Type: a road sign, a field guide and an instrument cluster</h3>
+        <div class="cs-type">
+          <div><span class="cs-spec cs-spec-display">Aa</span><strong>Bricolage Grotesque</strong><span>Display. A characterful grotesque with optical sizing; set tight and slightly condensed for headlines.</span></div>
+          <div><span class="cs-spec cs-spec-ui">Aa</span><strong>Instrument Sans</strong><span>UI and body. Calm, legible at small sizes, pairs without competing.</span></div>
+          <div><span class="cs-spec cs-spec-mono">09:41</span><strong>JetBrains Mono</strong><span>Times, temperatures and data. Tabular figures so columns of ETAs line up like a dashboard.</span></div>
+        </div>
+        <h3>Colour: paper, ink and one signal</h3>
+        <p>A warm paper ground and near-black ink keep the interface quiet so the weather can be loud. One hi-vis orange marks action and the destination. A weather spectrum (sun, cloud, fog, rain, ice, storm) is used identically on the map, timeline, chart and icons. Every pairing passes WCAG AA in light and dark mode, and an automated audit enforces it.</p>
+        <div class="cs-swatches" aria-hidden="true">
+          <span style="--s:var(--paper)"><em>Paper</em></span><span style="--s:var(--ink)"><em>Ink</em></span><span style="--s:var(--accent)"><em>Signal</em></span>
+          <span style="--s:var(--w-clear)"><em>Sun</em></span><span style="--s:var(--w-cloud)"><em>Cloud</em></span><span style="--s:var(--w-fog)"><em>Fog</em></span>
+          <span style="--s:var(--w-rain)"><em>Rain</em></span><span style="--s:var(--w-snow)"><em>Ice</em></span><span style="--s:var(--w-storm)"><em>Storm</em></span>
+        </div>
+        <h3>Illustration: isometric pen and ink</h3>
+        <p>Stock photos of open roads say "travel" and nothing else. The illustration instead explains the product: one road under three different skies, with forecast tags pinned to the moment the car gets there. It's drawn as technical pen work (ink outlines, crosshatching, colour only as accent) and generated by a small script, so it's precise, light, themeable and stays true to the data. After a plan, the hero's tags update to the user's own trip.</p>
+        <div class="cs-pair">
+          <figure class="cs-figure"><img src="assets/img/case/after-timeline.jpg" width="1440" height="900" loading="lazy" alt="The timeline of stops with arrival times, pen-style weather icons, temperatures, a rest-stop row, and hazard flags such as dense fog advisory."><figcaption>The timeline: arrival time, conditions and flags per stop, with rest stops and sunset in sequence.</figcaption></figure>
+          <figure class="cs-figure cs-figure-tall"><img src="assets/img/case/after-poster.jpg" width="720" height="900" loading="lazy" alt="A trip poster image: Denver to Moab drawn on an isometric slab, labelled stops, and a road score card."><figcaption>Trip posters turn a plan into something worth sharing.</figcaption></figure>
+        </div>
+        <h3>Motion with a job</h3>
+        <p>Motion explains state instead of decorating it. The route draws itself from A to B, stops cascade in arrival order, and the score counts up so the number lands. Weather glyphs move the way weather does. Everything respects <code>prefers-reduced-motion</code>.</p>
+      </div>
+    </section>
+
+    <section class="cs-section" aria-labelledby="productTitle">
+      <p class="cs-num">04</p>
+      <div class="cs-body">
+        <h2 id="productTitle">Features that earn their place</h2>
+        <div class="cs-grid">
+          <article><h3>Compare routes</h3><p>Real alternatives get their own forecast and score, tagged "Fastest" and "Best weather". Nine extra minutes can beat a fog bank.</p></article>
+          <article><h3>Rest stops</h3><p>Long drives aren't non-stop. Breaks shift every ETA, so the forecast lines up with reality.</p></article>
+          <article><h3>Official alerts</h3><p>National Weather Service warnings in force at your ETA weigh into the score and are called out by name.</p></article>
+          <article><h3>Sunrise &amp; sunset</h3><p>The timeline marks where you'll lose the light. That matters on mountain roads and around wildlife.</p></article>
+          <article><h3>Works offline</h3><p>Installable, and any trip you've opened still loads with no signal. That's exactly when you're at a remote gas station.</p></article>
+          <article><h3>Built for the phone</h3><p>A swipeable strip of stops, thumb-sized controls, and no sideways scrolling at 390 px.</p></article>
+        </div>
+        <figure class="cs-figure cs-figure-phone">
+          <img src="assets/img/case/after-mobile.jpg" width="585" height="1266" loading="lazy" alt="The app on a phone: breaks control, route comparison cards and road score.">
+        </figure>
+      </div>
+    </section>
+
+    <section class="cs-section" id="engineering" aria-labelledby="engTitle">
+      <p class="cs-num">05</p>
+      <div class="cs-body">
+        <h2 id="engTitle">Engineering decisions</h2>
+        <ul class="cs-list">
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>No keys, no backend.</strong> Open-Meteo, OSRM, Photon, OpenFreeMap and the NWS are free and CORS-enabled, so there's nothing secret to leak and nothing to host.</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>One request for all the weather.</strong> Every checkpoint on every candidate route is forecast in a single multi-location call. Changing departure time, breaks or units re-scores instantly with no network.</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>Graceful when things fail.</strong> A backup routing server, a fallback geocoder, partial results when town-naming is slow, and clear errors for real dead ends ("No road between those two").</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>Offline-first shell.</strong> A service worker caches the app and, network-first, the last good API answers and map tiles.</span></li>
+          <li><svg class="ico"><use href="#i-check"/></svg><span><strong>Tested before it ships.</strong> Playwright tests replay recorded API responses with a pinned clock, so they're fast and deterministic. An axe accessibility audit runs in light and dark mode. Deploys to Pages only happen if everything passes.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="cs-section" aria-labelledby="nextTitle">
+      <p class="cs-num">06</p>
+      <div class="cs-body">
+        <h2 id="nextTitle">What's next</h2>
+        <p>Overnight stops for multi-day trips, live road-condition feeds such as chain controls, and a small edge proxy with caching to take load off the free public services as usage grows.</p>
+        <a class="cta cs-cta" href="./"><span>Plan a drive</span><svg class="ico cta-arrow"><use href="#i-arrow"/></svg></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <a class="brand" href="./" aria-label="Weather to Travel, open the app">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="26" cy="14" r="8" class="bm-sun"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/></svg>
+        <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+      </a>
+      <p class="footer-data">Original team: <a href="https://github.com/HebahM" rel="noopener">Hebah</a> · <a href="https://github.com/jenniferchan2267" rel="noopener">Jennifer</a> · <a href="https://github.com/mykolyn" rel="noopener">Michael</a> · <a href="https://github.com/tsully1990" rel="noopener">Tyler</a></p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "weather-to-travel",
+  "private": true,
+  "description": "The forecast for your whole drive. Static site; this file only holds the test tooling.",
+  "scripts": {
+    "serve": "python3 -m http.server 4173",
+    "test": "playwright test",
+    "test:record": "node tests/record-fixtures.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.63.0"
+  }
+}

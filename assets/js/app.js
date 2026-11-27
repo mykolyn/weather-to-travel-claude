@@ -1,6 +1,7 @@
 import { searchPlaces, reversePlace, getRoutes, getForecasts, getAlerts } from './api.js';
 import { sampleRoute, evaluate, scan, band, CAT_VAR, BREAKS, withBreaks } from './model.js';
 import { weatherIcon, icon } from './icons.js';
+import { drawPoster } from './poster.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -9,6 +10,20 @@ const store = {
   get(k, fallback = null) { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
+// ---------- Optional analytics (GoatCounter: no cookies, no personal data) ----------
+const GC_CODE = document.querySelector('meta[name="wtt-goatcounter"]')?.content.trim();
+if (GC_CODE && /^[a-z0-9-]+$/i.test(GC_CODE)) {
+  const sc = document.createElement('script');
+  sc.async = true;
+  sc.src = 'https://gc.zgo.at/count.js';
+  sc.dataset.goatcounter = `https://${GC_CODE}.goatcounter.com/count`;
+  document.head.appendChild(sc);
+}
+/** Count a product event (no-op unless analytics is configured). */
+function track(name) {
+  try { window.goatcounter?.count?.({ path: `event/${name}`, title: name, event: true }); } catch { /* ignore */ }
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
 // ===================================================================
@@ -388,6 +403,7 @@ async function plan(from, to, depart, { route = 0, breaks = breaksPref } = {}) {
     if (signal.aborted) return;
 
     trip = { from, to, options, active, depart, breaks: BREAKS[breaks] ? breaks : 'off' };
+    track('plan');
     rememberTrip(from, to);
     writeURL();
     setPhase('trip');
@@ -400,9 +416,12 @@ async function plan(from, to, depart, { route = 0, breaks = breaksPref } = {}) {
     }, 450);
   } catch (err) {
     if (err.name === 'AbortError' || signal.aborted) return;
-    if (err.kind !== 'noroute') console.error(err);
-    $('#errorTitle').textContent = err.kind === 'noroute' ? 'No road between those two' : 'Something went sideways';
-    $('#errorText').textContent = err.message || 'Please try again.';
+    if (err.kind !== 'noroute' && navigator.onLine) console.error(err);
+    const offline = !navigator.onLine;
+    $('#errorTitle').textContent = err.kind === 'noroute' ? 'No road between those two' : offline ? 'You\'re offline' : 'Something went sideways';
+    $('#errorText').textContent = offline
+      ? 'This trip hasn\'t been saved on this device yet. Trips you\'ve already opened work without a signal.'
+      : (err.message || 'Please try again.');
     setPhase('error');
   }
 }
@@ -460,6 +479,7 @@ async function switchRoute(i) {
     o.names = await nameStops(o.points, trip.from, trip.to);
   }
   trip.active = i;
+  track('switch-route');
   writeURL();
   render({ animate: true, fresh: true });
 }
@@ -467,6 +487,7 @@ async function switchRoute(i) {
 function setBreaks(key) {
   if (!BREAKS[key] || !trip) return;
   trip.breaks = breaksPref = key;
+  track(`breaks-${key}`);
   store.set('wtt-breaks', key);
   writeURL();
   render({ animate: false });
@@ -499,12 +520,51 @@ function render({ animate = false, fresh = false } = {}) {
   const alts = renderRoutes();
   renderVerdict(evald, stops, best, animate, alts);
   renderOptimizer(options, best, depart);
-  renderAdvice(stops, evald);
-  renderTimeline(stops, animate, v.breaks, o.route);
+  renderAdvice(stops, evald, sunEvents(stops, o.forecasts));
+  renderTimeline(stops, animate, v.breaks, o.route, sunEvents(stops, o.forecasts));
+  renderStrip(stops);
+  updateHero(stops);
+  lastRender = { stops, evald, v };
   map.drawTrip(o.route, stops, {
     animate: fresh,
     alts: trip.options.map((x, i) => ({ i, coords: x.route.coords })).filter(x => x.i !== trip.active),
   });
+}
+
+let lastRender = null;
+
+/** Mobile: a swipeable strip of stop cards (CSS hides it on wide screens). */
+function renderStrip(stops) {
+  $('#strip').innerHTML = stops.map((s, k) => `
+    <button type="button" class="strip-card" data-k="${k}" style="--c:var(${s.c ? CAT_VAR[s.c.cat] : '--ink-3'})">
+      <span class="sc-time">${esc(fmt.time(s.eta))}</span>
+      <span class="sc-icon">${s.c ? weatherIcon(s.c.cat, s.c.isDay, { size: 40 }) : ''}</span>
+      <span class="sc-temp">${s.c ? fmt.temp(s.c.temp) : '—'}</span>
+      <span class="sc-name">${esc(placeLabel(s))}</span>
+      <span class="sc-cond">${s.c ? esc(s.c.text) : ''}</span>
+    </button>`).join('');
+}
+
+/** The hero drawing's forecast tags follow the real trip (start, middle, roughest stop). */
+function updateHero(stops) {
+  const known = stops.filter(s => s.c);
+  if (known.length < 3) return;
+  const worst = known.slice(1).reduce((a, b) => (b.h > a.h ? b : a));
+  const mid = known[Math.floor(known.length / 2)] === worst ? known[Math.floor(known.length / 2) - 1] : known[Math.floor(known.length / 2)];
+  const pick = [known[0], mid, worst];
+  const short = s => (s.h >= 0.3 ? (s.why || s.c.text) : fmt.temp(s.c.temp)).replace(/^\w/, ch => ch.toUpperCase());
+  $$('#sceneSvg .tag').forEach((g, i) => {
+    const s = pick[i];
+    const text = g.querySelector('text'), rect = g.querySelector('rect');
+    text.textContent = `${fmt.time(s.eta)} · ${short(s)}`.slice(0, 26);
+    const w = Math.max(88, text.getComputedTextLength() + 30);
+    const cx = Number(text.getAttribute('x'));
+    rect.setAttribute('width', w.toFixed(0));
+    rect.setAttribute('x', (cx - w / 2).toFixed(1));
+    g.classList.toggle('tag-warn', s.h >= 0.3);
+  });
+  const wet = known.some(s => ['rain', 'drizzle', 'storm', 'snow', 'freezing'].includes(s.c.cat) || s.c.pop >= 50);
+  $('#sceneSvg .rain')?.classList.toggle('is-off', !wet);
 }
 
 function renderRoutes() {
@@ -532,6 +592,18 @@ function renderRoutes() {
     </button>`;
   }).join('');
   return rows;
+}
+
+/** Sunrises/sunsets that happen while you're on the road, located at the stretch you'll be on. */
+function sunEvents(stops, forecasts) {
+  const out = [];
+  for (let k = 0; k < stops.length - 1; k++) {
+    const a = stops[k], b = stops[k + 1];
+    (forecasts[k]?.sun || []).forEach(e => {
+      if (e.t >= a.eta && e.t < b.eta) out.push({ ...e, near: a, next: b });
+    });
+  }
+  return out;
 }
 
 function placeLabel(s) {
@@ -681,7 +753,7 @@ function changeDeparture(dep, focusIndex) {
 }
 
 // ---------- Advice ----------
-function renderAdvice(stops, evald) {
+function renderAdvice(stops, evald, sun = []) {
   const known = stops.filter(s => s.c);
   const items = [];
   if (!known.length) { $('#advice').innerHTML = ''; return; }
@@ -726,7 +798,11 @@ function renderAdvice(stops, evald) {
   }
   if (feelsLo <= 12) items.push(['jacket', 'info', 'Grab a jacket', `It'll feel as cold as ${fmt.temp(feelsLo)} at points along the way.`]);
   if (hi >= 33) items.push(['heat', 'warn', 'Hot stretch', `Up to ${fmt.temp(hi)} near ${placeLabel(hiStop)}. Pack water; check your coolant.`]);
-  const dark = known.filter(s => !s.c.isDay).length;
+  const sunset = sun.find(e => e.kind === 'sunset');
+  const sunrise = sun.find(e => e.kind === 'sunrise');
+  if (sunset) items.push(['moon', 'info', `Sunset at ${fmt.time(sunset.t)}`, `You'll lose the light between ${placeLabel(sunset.near)} and ${placeLabel(sunset.next)}. Headlights on, watch for wildlife.`]);
+  if (sunrise) items.push(['sun', 'info', `Sunrise at ${fmt.time(sunrise.t)}`, `Daylight returns between ${placeLabel(sunrise.near)} and ${placeLabel(sunrise.next)}${sunrise.t - trip.depart > 3600 ? ' — the early stretch is in the dark' : ''}.`]);
+  const dark = sunset || sunrise ? 0 : known.filter(s => !s.c.isDay).length;
   if (dark) items.push(['moon', 'info', dark === known.length ? 'Night drive' : 'Part of it\'s after dark', dark === known.length ? 'The whole drive is after dark. Stay alert and take breaks.' : `About ${Math.round((dark / known.length) * 100)}% of the drive is in the dark.`]);
   const sunny = known.filter(s => s.c.cat === 'clear' && s.c.isDay).length;
   if (sunny >= Math.max(1, known.length / 3)) items.push(['glasses', 'info', 'Sunglasses', 'Plenty of bright sky on this drive.']);
@@ -741,13 +817,25 @@ function renderAdvice(stops, evald) {
 }
 
 // ---------- Timeline ----------
-function renderTimeline(stops, animate, breaks = [], route = null) {
+function renderTimeline(stops, animate, breaks = [], route = null, sun = []) {
   const last = stops.length - 1;
   // Place each rest stop between the checkpoints it falls between (by driving time).
   const distAt = drive => {
     if (!route) return 0;
     const i = route.cumT.findIndex(t => t >= drive);
     return route.cumD[i < 0 ? route.cumD.length - 1 : i];
+  };
+  const sunRow = (e, idx) => {
+    const t = splitTime(e.t);
+    const up = e.kind === 'sunrise';
+    return `<li class="stop stop-break stop-sun ${up ? 'is-rise' : 'is-set'} ${animate ? 'enter' : ''}" style="--i:${idx}">
+      <div class="stop-btn" role="note">
+        <span class="stop-time"><b>${esc(t.main)}</b><small>${esc(t.period)}</small></span>
+        <span class="stop-node" aria-hidden="true"></span>
+        <span class="stop-icon">${icon(up ? 'sun' : 'moon')}</span>
+        <span class="stop-main"><span class="stop-name">${up ? 'Sunrise' : 'Sunset'}</span>
+        <span class="stop-sub">between ${esc(placeLabel(e.near))} and ${esc(placeLabel(e.next))}</span></span>
+      </div></li>`;
   };
   const breakRow = (b, idx) => {
     const t = splitTime(trip.depart + b.at);
@@ -760,12 +848,13 @@ function renderTimeline(stops, animate, breaks = [], route = null) {
         <span class="stop-sub">around ${fmt.distShort(distAt(b.drive))} ${fmt.distUnit()} · stretch, refuel, snack</span></span>
       </div></li>`;
   };
-  let bi = 0, row = 0;
-  $('#timeline').innerHTML = stops.map((s, k) => {
-    let pre = '';
-    while (bi < breaks.length && breaks[bi].drive <= s.drive && k > 0) pre += breakRow(breaks[bi++], row++);
-    return pre + stopRow(s, k, row++);
-  }).join('');
+  // Merge checkpoints, breaks and sun events into one time-ordered list.
+  const rows = [
+    ...stops.map((s, k) => ({ at: s.eta, rank: 0, draw: i => stopRow(s, k, i) })),
+    ...breaks.map(b => ({ at: trip.depart + b.at, rank: 1, draw: i => breakRow(b, i) })),
+    ...sun.map(e => ({ at: e.t, rank: 2, draw: i => sunRow(e, i) })),
+  ].sort((a, b) => a.at - b.at || a.rank - b.rank);
+  $('#timeline').innerHTML = rows.map((r, i) => r.draw(i)).join('');
   function stopRow(s, k, rowIndex) {
     const t = splitTime(s.eta);
     const c = s.c;
@@ -1057,6 +1146,56 @@ $('#shareBtn').addEventListener('click', async () => {
   catch { prompt('Copy this link:', url); }
 });
 
+$('#strip').addEventListener('click', e => {
+  const c = e.target.closest('.strip-card');
+  if (c) map.focus(Number(c.dataset.k));
+});
+
+// ---------- Trip poster ----------
+const posterDialog = $('#posterDialog');
+let posterBlobUrl = null;
+$('#posterBtn').addEventListener('click', async () => {
+  if (!trip || !lastRender) return;
+  const btn = $('#posterBtn');
+  btn.classList.add('busy');
+  try {
+    const { stops, evald, v } = lastRender;
+    const D = v.o.route.distance || 1;
+    const name = s => placeLabel(s);
+    const canvas = await drawPoster({
+      from: trip.from.name, to: trip.to.name,
+      leaveText: fmt.dayTime(trip.depart),
+      arriveText: fmt.dayTime(trip.depart + v.duration),
+      distanceText: fmt.dist(v.o.route.distance),
+      durationText: fmt.duration(v.duration),
+      score: evald.score, band: band(evald.score),
+      title: $('#verdictTitle').textContent, text: $('#verdictText').textContent,
+      coords: v.o.route.coords,
+      colorStops: stops.map((s, k) => ({ at: k === 0 ? 0 : (stops[k - 1].d + s.d) / 2 / D, color: s.c ? cssVar(CAT_VAR[s.c.cat]) : '#8B8F98' })),
+      stops: stops.map(s => ({ lat: s.lat, lon: s.lon, h: s.h, label: `${fmt.time(s.eta)} ${name(s)}`, temp: s.c ? (s.h >= 0.35 && s.why ? s.why : fmt.temp(s.c.temp)) : '—', color: s.c ? cssVar(CAT_VAR[s.c.cat]) : '#8B8F98', warn: s.h >= 0.35 })),
+      url: 'mykolyn.github.io/weather-to-travel-claude',
+    });
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    if (posterBlobUrl) URL.revokeObjectURL(posterBlobUrl);
+    posterBlobUrl = URL.createObjectURL(blob);
+    $('#posterImg').src = posterBlobUrl;
+    const file = `${trip.from.name}-to-${trip.to.name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.png';
+    const dl = $('#posterDownload');
+    dl.href = posterBlobUrl;
+    dl.download = file;
+    const share = $('#posterShare');
+    const shareFile = new File([blob], file, { type: 'image/png' });
+    share.hidden = !(navigator.canShare && navigator.canShare({ files: [shareFile] }));
+    share.onclick = () => navigator.share({ files: [shareFile], title: `${trip.from.name} → ${trip.to.name}` }).catch(() => {});
+    posterDialog.showModal();
+    track('poster');
+  } finally {
+    btn.classList.remove('busy');
+  }
+});
+$('#posterClose').addEventListener('click', () => posterDialog.close());
+posterDialog.addEventListener('click', e => { if (e.target === posterDialog) posterDialog.close(); });
+
 $('#routeCards').addEventListener('click', e => {
   const card = e.target.closest('.route-card');
   if (card) switchRoute(Number(card.dataset.i));
@@ -1072,6 +1211,13 @@ const backToPlanner = () => {
 };
 $('#editBtn').addEventListener('click', backToPlanner);
 $('#errorBack').addEventListener('click', backToPlanner);
+
+// Installable + works offline (see sw.js).
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+addEventListener('offline', () => toast('You\'re offline — trips you\'ve opened before still work.'));
+addEventListener('online', () => toast('Back online.'));
 
 const topbar = $('.topbar');
 const onScroll = () => topbar.classList.toggle('scrolled', scrollY > 8);

@@ -131,17 +131,25 @@ function toRoute(r) {
 }
 
 /** Fastest route plus up to two real alternatives, each labelled by its signature road. */
+const ROUTERS = [
+  `${OSRM}/route/v1/driving`,
+  'https://routing.openstreetmap.de/routed-car/route/v1/driving', // FOSSGIS mirror, used if the main server is down
+];
+
 export async function getRoutes(a, b, { signal } = {}) {
-  const url = `${OSRM}/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}` +
+  const query = `/${a.lon},${a.lat};${b.lon},${b.lat}` +
     '?overview=full&geometries=geojson&annotations=duration,distance&alternatives=2&steps=true';
   let data;
-  try {
-    data = await getJSON(url, { signal, timeout: 20000 });
-  } catch (err) {
-    if (err.name === 'AbortError') throw err;
-    if (err.body?.code) data = err.body; // e.g. NoRoute / NoSegment come back as HTTP 400
-    else throw new Error('The routing service didn\'t answer. Please try again in a moment.');
+  for (const base of ROUTERS) {
+    try {
+      data = await getJSON(base + query, { signal, timeout: 15000 });
+      break;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (err.body?.code) { data = err.body; break; } // NoRoute / NoSegment: a real answer, don't retry
+    }
   }
+  if (!data) throw new Error('The routing services didn\'t answer. Please try again in a moment.');
   if (data.code !== 'Ok' || !data.routes?.length) {
     throw Object.assign(new Error('We couldn\'t find a drivable route between those two places. Are they on the same landmass?'), { kind: 'noroute' });
   }
@@ -194,6 +202,7 @@ export async function getForecasts(points, { signal } = {}) {
     latitude: points.map(p => p.lat.toFixed(4)).join(','),
     longitude: points.map(p => p.lon.toFixed(4)).join(','),
     hourly: HOURLY.join(','),
+    daily: 'sunrise,sunset',
     forecast_days: String(FORECAST_DAYS),
     timeformat: 'unixtime',
     timezone: 'GMT',
@@ -219,6 +228,11 @@ export async function getForecasts(points, { signal } = {}) {
       gust: h.wind_gusts_10m,
       vis: h.visibility,
       isDay: h.is_day,
+      // Sun events as a flat, time-sorted list.
+      sun: d.daily ? [
+        ...(d.daily.sunrise || []).map(t => ({ t, kind: 'sunrise' })),
+        ...(d.daily.sunset || []).map(t => ({ t, kind: 'sunset' })),
+      ].filter(e => e.t).sort((a, b) => a.t - b.t) : [],
     };
   });
 }
