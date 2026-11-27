@@ -143,3 +143,37 @@ test.describe('accessibility', () => {
     expect(await audit(page)).toEqual([]);
   });
 });
+
+test.describe('map', () => {
+  const pinGap = page => page.evaluate(() => {
+    const pins = [...document.querySelectorAll('#map .end-pin')].map(p => p.getBoundingClientRect());
+    if (pins.length < 2) return 0;
+    const [a, b] = [pins[0], pins[pins.length - 1]];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  });
+
+  test('zooms to the route (start east of destination: San Jose → San Francisco)', async ({ page }) => {
+    await openTrip(page, TRIPS.sf);
+    await expect(page.locator('#map .wx-pin')).toHaveCount(2);
+    // On the old "whole world" view both pins sat on top of each other.
+    await expect.poll(() => pinGap(page), { timeout: 10_000 }).toBeGreaterThan(200);
+  });
+
+  test('still frames the trip when the forecast fails', async ({ page, context }) => {
+    await context.route(/api\.open-meteo\.com/, r => r.fulfill({ status: 500, body: 'down' }));
+    await page.goto(TRIPS.sf);
+    await expect(page.locator('#errorCard')).toBeVisible();
+    await expect.poll(() => pinGap(page), { timeout: 10_000 }).toBeGreaterThan(200);
+  });
+});
+
+test('an idle results page is not animating anything (keeps laptops cool)', async ({ page }) => {
+  await openTrip(page, TRIPS.tahoe);
+  await page.locator('#timeline').scrollIntoViewIfNeeded();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(2500); // route draw-in, score count-up and reveals finish
+  const running = await page.evaluate(() => document.getAnimations()
+    .filter(a => a.playState === 'running' && a.effect?.getComputedTiming?.().iterations === Infinity)
+    .map(a => `${a.animationName} on ${a.effect.target?.getAttribute?.('class') || a.effect.target?.tagName}`));
+  expect(running).toEqual([]);
+});

@@ -235,11 +235,10 @@ def hero():
     x_start, x_end = -.2, 10.6
     (sx, sy), (ex, ey) = iso.p(x_start, lane, 0), iso.p(x_end, lane, 0)
     (ox, oy) = iso.p(0, 0, 0)
-    car_g = (f'<g class="car-wrap"><g class="car">'
-             f'<animateTransform attributeName="transform" type="translate" dur="14s" repeatCount="indefinite" '
-             f'values="{sx - ox:.1f} {sy - oy:.1f};{ex - ox:.1f} {ey - oy:.1f}" keyTimes="0;1" calcMode="linear"/>'
-             f'<animate attributeName="opacity" dur="14s" repeatCount="indefinite" values="0;1;1;0" keyTimes="0;.05;.93;1"/>'
-             f'{car_svg}</g></g>')
+    # The car sits at the start of the road; the whole car layer is slid along the road with a
+    # CSS transform (compositor-only), instead of SMIL which forces layout on every frame.
+    car_g = f'<g class="car-wrap"><g class="car" transform="translate({sx - ox:.1f} {sy - oy:.1f})">{car_svg}</g></g>'
+    car_delta = (ex - sx, ey - sy)
 
     # ---- sky: three weather zones (start / middle / end of the drive) ----
     # Every zone has a drawing for each kind of weather; the app switches them to match the real
@@ -354,9 +353,23 @@ def hero():
     tags.append(tag(8.3, 4.6, "12:15 · Rain", "tag-3 tag-warn", 124))
 
     x, y, w, h = iso.bbox(14)
-    body = "".join(ground + back + [car_g] + front + sky + tags)
-    return (f'<svg class="iso" viewBox="{x:.0f} {y:.0f} {w:.0f} {h:.0f}" id="sceneSvg" role="img" '
-            f'aria-label="Isometric pen drawing of a road crossing a landscape: sun over a town, clouds over a forest, rain over mountains">{body}</svg>')
+    vb = f'viewBox="{x:.0f} {y:.0f} {w:.0f} {h:.0f}"'
+    # Four stacked SVGs sharing one viewBox, in painter's order. Still layers are painted once;
+    # moving layers (car; sky + tags) sit on their own compositor layers so their animation
+    # doesn't force the browser to repaint the detailed, hatched landscape every frame.
+    layers = [
+        ('still', ground + back),
+        ('moving moving-car', [car_g]),
+        ('still', front),
+        ('moving', sky + tags),
+    ]
+    dx, dy = car_delta[0] / w * 100, car_delta[1] / h * 100
+    car_css = (f'<style>@keyframes car-drive {{0% {{ transform: translate(0, 0); opacity: 0; }} 5% {{ opacity: 1; }} '
+               f'93% {{ opacity: 1; }} 100% {{ transform: translate({dx * .93 / .93:.3f}%, {dy:.3f}%); opacity: 0; }}}}</style>')
+    layers[1] = ('moving moving-car', [car_css] + layers[1][1])
+    svgs = "".join(f'<svg class="iso layer {cls}" {vb} aria-hidden="true">{"".join(parts)}</svg>' for cls, parts in layers)
+    return (f'<div class="scene-stack" id="sceneSvg" role="img" '
+            f'aria-label="Isometric pen drawing of a road crossing a landscape: sun over a town, clouds over a forest, rain over mountains">{svgs}</div>')
 
 
 # --------------------------------------------------------------------

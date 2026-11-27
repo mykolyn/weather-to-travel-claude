@@ -1054,10 +1054,11 @@ const map = {
   },
   preview(a, b) {
     if (!this.m) return;
-    requestAnimationFrame(() => {
-      this.m.resize();
-      this.m.fitBounds([[a.lon, a.lat], [b.lon, b.lat]], { padding: 80, duration: reduceMotion ? 0 : 900, maxZoom: 10 });
-    });
+    // Build the box with extend(): passing [a, b] directly treats a start east of the
+    // destination as a box wrapping the whole planet (the "world map" bug).
+    const box = new maplibregl.LngLatBounds([a.lon, a.lat], [a.lon, a.lat]).extend([b.lon, b.lat]);
+    this.m.resize();
+    this.m.fitBounds(box, { padding: 80, duration: reduceMotion ? 0 : 900, maxZoom: 10 });
     const mk = (p, cls, letter) => {
       const el = document.createElement('div');
       el.innerHTML = `<div class="end-pin ${cls} pulse"><span>${letter}</span></div>`;
@@ -1122,6 +1123,7 @@ const map = {
       route.coords.forEach(([la, lo]) => b.extend([lo, la]));
       alts.forEach(a => a.coords.forEach(([la, lo]) => b.extend([lo, la])));
       this.m.resize();
+      this.m.stop(); // cancel any preview move still in flight so the route view always wins
       const wide = matchMedia('(min-width: 961px)').matches;
       this.m.fitBounds(b, { padding: wide ? { top: 70, bottom: 90, left: 70, right: 110 } : 50, duration: reduceMotion ? 0 : 1000, maxZoom: 11 });
       if (!reduceMotion) {
@@ -1279,7 +1281,33 @@ if ('IntersectionObserver' in window && !reduceMotion) {
 } else {
   $$('.reveal').forEach(el => el.classList.add('in'));
 }
-if (reduceMotion) $('#sceneSvg')?.pauseAnimations?.();
+// Hero drawing: animate only while visible (and never with reduced motion).
+{
+  const stack = $('#sceneSvg');
+  const svgs = stack ? [...stack.querySelectorAll('svg')] : [];
+  let onScreen = true;
+  const sync = () => {
+    const run = onScreen && !document.hidden && !reduceMotion;
+    stack?.classList.toggle('is-paused', !run);
+    svgs.forEach(s => (run ? s.unpauseAnimations?.() : s.pauseAnimations?.()));
+  };
+  // Ambient detail (rain, clouds, sun, tags) plays on arrival and while you're over the drawing,
+  // then settles after a while; the car (compositor-only, ~free) keeps driving.
+  let restTimer;
+  const wake = () => {
+    stack?.classList.remove('is-resting');
+    clearTimeout(restTimer);
+    restTimer = setTimeout(() => stack?.classList.add('is-resting'), 12000);
+  };
+  stack?.addEventListener('pointermove', wake, { passive: true });
+  stack?.addEventListener('pointerenter', wake, { passive: true });
+  wake();
+  if (stack && 'IntersectionObserver' in window) {
+    new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; sync(); }).observe(stack);
+  }
+  document.addEventListener('visibilitychange', sync);
+  sync();
+}
 
 // ===================================================================
 // Boot from a shared link

@@ -28,7 +28,7 @@ A ground-up rebuild of the original [Weather-to-travel](https://github.com/mykol
 | Driving routes, alternatives, per-segment travel time | [OSRM](https://project-osrm.org/) public server |
 | Hourly forecast (8 days, many points in one request) | [Open-Meteo](https://open-meteo.com/) |
 | Official weather alerts (US) | [National Weather Service API](https://www.weather.gov/documentation/services-web-api) |
-| Basemap | [OpenFreeMap](https://openfreemap.org/) vector tiles via [MapLibre GL JS](https://maplibre.org/) |
+| Basemap | [OpenFreeMap](https://openfreemap.org/) vector tiles via [MapLibre GL JS](https://maplibre.org/) (bundled in `assets/vendor`, BSD-3 licence) |
 
 The original app hard-coded Google and OpenWeather keys and relied on the now-defunct `cors-anywhere` proxy. This version has no secrets and no backend.
 
@@ -42,6 +42,7 @@ The original app hard-coded Google and OpenWeather keys and relied on the now-de
 ## Reliability
 
 - Routing falls back from the public OSRM server to the FOSSGIS mirror (`routing.openstreetmap.de`). Place search falls back from Photon to Open-Meteo geocoding.
+- **Performance:** the hero drawing is split into still and moving layers, and the moving ones get their own compositor layers. The scene pauses off-screen or in a background tab, and its ambient detail settles after 12 s without interaction. Weather icons animate only on hover. An idle page uses about 1–2% of the main thread, and a test fails if anything starts looping in the background.
 - Requests have time limits. A slow or failed service always ends in a clear message with **Try again**, never an endless spinner. A 45-second safety net backs this up.
 - The page keeps the last good answer for each request, so trips you've opened work offline. `sw.js` caches the app's files and map tiles but deliberately doesn't relay live API calls (on iOS Safari that could leave requests hanging).
 
