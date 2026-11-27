@@ -374,6 +374,26 @@ img, svg { display: block; }
 .car-glass { fill: var(--surface); }
 .car-wheel { fill: var(--pen); }
 .flag-b { fill: var(--accent); } .flag-a { fill: var(--surface); }
+.wx-v { display: none; }
+.wx-v.on { display: inline; animation: wx-in .6s var(--ease); }
+@keyframes wx-in { from { opacity: 0; } }
+.f-cloudshadow.is-dense { opacity: .9 !important; }
+.f-fog { fill: var(--surface); stroke: none !important; opacity: .62; }
+.iso .fog-line { stroke-dasharray: 10 8; animation: fog-drift 4s ease-in-out infinite alternate; }
+@keyframes fog-drift { from { translate: -10px 0; } to { translate: 10px 0; } }
+.moon-core { fill: var(--surface); }
+.iso .star-pen { fill: none; stroke-width: 1.2; }
+.moon { animation: float 6s ease-in-out infinite; }
+.iso .snow .flake { fill: none; stroke: var(--w-snow); stroke-width: 1.5; animation: flake-fall 3s linear infinite; }
+@keyframes flake-fall { 0% { translate: 0 -10px; opacity: 0; } 20% { opacity: 1; } 100% { translate: 6px 34px; opacity: 0; } }
+.bolt { fill: var(--w-clear); animation: wx-flash 2.6s ease-in-out infinite; }
+.scene-cap {
+  position: absolute; left: 50%; bottom: -6px; translate: -50% 0; display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 99px; background: var(--surface); border: 1.4px solid var(--pen); box-shadow: 3px 3px 0 var(--pen);
+  font: 600 12.5px/1 var(--font-mono); color: var(--ink); white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis;
+  animation: fade-up .5s var(--ease);
+}
+.scene-cap::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
 .sun-core { fill: var(--w-clear); }
 .sun-rays { animation: spin 36s linear infinite; }
 .birds { animation: float 5s ease-in-out infinite; }

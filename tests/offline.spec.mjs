@@ -1,4 +1,4 @@
-import { test, expect, openTrip, TRIPS } from './helpers.mjs';
+import { test, expect, openTrip, scoreSettled, TRIPS } from './helpers.mjs';
 
 test.use({ serviceWorkers: 'allow' });
 
@@ -9,11 +9,13 @@ test('a trip you have opened still works with no signal', async ({ page, context
   await page.reload();
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   await expect(page.locator('#trip')).toBeVisible();
+  await scoreSettled(page);
   const score = await page.locator('#scoreNum').innerText();
 
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('#trip')).toBeVisible();
+  await scoreSettled(page);
   await expect(page.locator('#scoreNum')).toHaveText(score);
   await expect(page.locator('#timeline button.stop-btn')).toHaveCount(4);
 });

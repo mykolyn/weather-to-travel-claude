@@ -545,26 +545,47 @@ function renderStrip(stops) {
     </button>`).join('');
 }
 
-/** The hero drawing's forecast tags follow the real trip (start, middle, roughest stop). */
+/** The hero drawing redraws its three skies (start / middle / end of the drive) from the real forecast. */
+const HERO_KIND = c => ({
+  clear: c.isDay ? 'sun' : 'moon', partly: c.isDay ? 'sun' : 'moon', cloudy: 'cloud', fog: 'fog',
+  drizzle: 'rain', rain: 'rain', freezing: 'snow', snow: 'snow', storm: 'storm',
+}[c.cat] || 'cloud');
+
 function updateHero(stops) {
+  const svg = $('#sceneSvg');
   const known = stops.filter(s => s.c);
-  if (known.length < 3) return;
-  const worst = known.slice(1).reduce((a, b) => (b.h > a.h ? b : a));
-  const mid = known[Math.floor(known.length / 2)] === worst ? known[Math.floor(known.length / 2) - 1] : known[Math.floor(known.length / 2)];
-  const pick = [known[0], mid, worst];
-  const short = s => (s.h >= 0.3 ? (s.why || s.c.text) : fmt.temp(s.c.temp)).replace(/^\w/, ch => ch.toUpperCase());
-  $$('#sceneSvg .tag').forEach((g, i) => {
-    const s = pick[i];
+  if (!svg || known.length < 2) return;
+  const D = known[known.length - 1].d || 1;
+  const thirds = [[], [], []];
+  known.forEach(s => thirds[Math.max(0, Math.min(2, Math.floor((s.d / D) * 3 - 1e-9)))].push(s));
+  // A third with no checkpoint borrows its neighbour's.
+  for (let i = 0; i < 3; i++) if (!thirds[i].length) thirds[i] = thirds[i - 1]?.length ? thirds[i - 1] : thirds[i + 1] || known;
+  // Each zone shows its roughest stop (or, if all calm, its middle stop).
+  const reps = thirds.map(list => {
+    const worst = list.reduce((a, b) => (b.h > a.h ? b : a));
+    return worst.h >= 0.15 ? worst : list[Math.floor(list.length / 2)];
+  });
+  ['a', 'b', 'c'].forEach((zone, i) => {
+    const kind = HERO_KIND(reps[i].c);
+    svg.querySelectorAll(`.wx-v[data-zone="${zone}"]`).forEach(g => g.classList.toggle('on', g.dataset.kind === kind));
+  });
+  const shortName = s => { const n = placeLabel(s); return n.length > 13 ? `${n.slice(0, 12)}…` : n; };
+  svg.querySelectorAll('.tag').forEach((g, i) => {
+    const s = reps[i];
     const text = g.querySelector('text'), rect = g.querySelector('rect');
-    text.textContent = `${fmt.time(s.eta)} · ${short(s)}`.slice(0, 26);
+    const what = s.h >= 0.3 && s.why ? s.why : fmt.temp(s.c.temp);
+    text.textContent = `${fmt.time(s.eta)} · ${shortName(s)} · ${what}`;
     const w = Math.max(88, text.getComputedTextLength() + 30);
     const cx = Number(text.getAttribute('x'));
     rect.setAttribute('width', w.toFixed(0));
     rect.setAttribute('x', (cx - w / 2).toFixed(1));
     g.classList.toggle('tag-warn', s.h >= 0.3);
   });
-  const wet = known.some(s => ['rain', 'drizzle', 'storm', 'snow', 'freezing'].includes(s.c.cat) || s.c.pop >= 50);
-  $('#sceneSvg .rain')?.classList.toggle('is-off', !wet);
+  const cap = $('#sceneCap');
+  cap.textContent = `Your drive: ${trip.from.name} → ${trip.to.name} · ${fmt.dayTime(trip.depart)}`;
+  cap.hidden = false;
+  svg.setAttribute('aria-label', `Your drive from ${trip.from.name} to ${trip.to.name}: ` +
+    reps.map(s => `${s.c.text.toLowerCase()} near ${placeLabel(s)}`).join(', then ') + '.');
 }
 
 function renderRoutes() {

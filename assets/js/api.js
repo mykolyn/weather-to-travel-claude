@@ -8,7 +8,18 @@ const METEO_GEO = 'https://geocoding-api.open-meteo.com/v1/search';
 
 export const FORECAST_DAYS = 8;
 
-async function getJSON(url, { signal, timeout = 15000 } = {}) {
+/** fetch JSON; on a "busy" answer (429/502/503/504) wait a moment and try once more. */
+async function getJSON(url, opts = {}) {
+  try {
+    return await getJSONOnce(url, opts);
+  } catch (err) {
+    if (![429, 502, 503, 504].includes(err.status) || opts.signal?.aborted) throw err;
+    await new Promise(r => setTimeout(r, 1500));
+    return getJSONOnce(url, opts);
+  }
+}
+
+async function getJSONOnce(url, { signal, timeout = 15000 } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new DOMException('Request timed out', 'TimeoutError')), timeout);
   const onAbort = () => ctrl.abort(signal.reason);
@@ -212,7 +223,9 @@ export async function getForecasts(points, { signal } = {}) {
     data = await getJSON(`${METEO}?${params}`, { signal, timeout: 20000 });
   } catch (err) {
     if (err.name === 'AbortError') throw err;
-    throw new Error('The forecast service didn\'t answer. Please try again in a moment.');
+    throw new Error(err.status === 429
+      ? 'The free forecast service is busy right now. Please try again in a minute.'
+      : 'The forecast service didn\'t answer. Please try again in a moment.');
   }
   const list = Array.isArray(data) ? data : [data];
   return list.map(d => {

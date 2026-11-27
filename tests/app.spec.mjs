@@ -84,6 +84,17 @@ test.describe('trip controls', () => {
     await expect(page.locator('#breaksSeg [data-breaks="long"]')).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('hero drawing redraws its skies for the planned trip', async ({ page }) => {
+    await openTrip(page, TRIPS.tahoe);
+    for (const zone of ['a', 'b', 'c']) {
+      await expect(page.locator(`#sceneSvg .wx-v.on[data-zone="${zone}"]`).first()).toBeAttached();
+      const kinds = await page.locator(`#sceneSvg .wx-v.on[data-zone="${zone}"]`).evaluateAll(gs => [...new Set(gs.map(g => g.dataset.kind))]);
+      expect(kinds).toHaveLength(1);
+    }
+    await expect(page.locator('#sceneCap')).toContainText('San Jose → South Lake Tahoe');
+    await expect(page.locator('#sceneSvg .tag text').first()).toHaveText(/^\d{1,2}:\d{2}\s?[AP]M · .+ · .+/);
+  });
+
   test('trip poster renders and can be downloaded', async ({ page }) => {
     await openTrip(page, TRIPS.sf);
     await page.locator('#posterBtn').click();

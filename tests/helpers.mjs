@@ -44,6 +44,16 @@ export const test = base.extend({
 export async function openTrip(page, path) {
   await page.goto(path);
   await expect(page.locator('#trip')).toBeVisible();
+  await scoreSettled(page);
+}
+
+/** The road score counts up; wait until the number matches the ring's target. */
+export async function scoreSettled(page) {
+  await page.waitForFunction(() => {
+    const n = document.querySelector('#scoreNum')?.textContent;
+    const off = parseFloat(document.querySelector('#ringFill')?.style.strokeDashoffset);
+    return Number.isFinite(off) && String(Math.round(100 - off)) === n;
+  });
 }
 
 export { expect };
