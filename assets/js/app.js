@@ -1,5 +1,5 @@
-import { searchPlaces, reversePlace, getRoute, getForecasts } from './api.js';
-import { sampleRoute, evaluate, scan, band, CAT_VAR } from './model.js';
+import { searchPlaces, reversePlace, getRoutes, getForecasts, getAlerts } from './api.js';
+import { sampleRoute, evaluate, scan, band, CAT_VAR, BREAKS, withBreaks } from './model.js';
 import { weatherIcon, icon } from './icons.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -65,9 +65,9 @@ $('#themeToggle').addEventListener('click', () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => map.setTiles());
 
 function syncUnitButtons() {
-  $$('.seg-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.units === units)));
+  $$('.seg-btn[data-units]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.units === units)));
 }
-$$('.seg-btn').forEach(b => b.addEventListener('click', () => {
+$$('.seg-btn[data-units]').forEach(b => b.addEventListener('click', () => {
   units = b.dataset.units;
   store.set('wtt-units', units);
   syncUnitButtons();
@@ -328,7 +328,7 @@ $('#planner').addEventListener('submit', async e => {
 // ===================================================================
 // Planning pipeline
 // ===================================================================
-let trip = null;       // { from, to, route, points, forecasts, names, depart }
+let trip = null;       // { from, to, options: [{ route, points, forecasts, alerts, names }], active, depart, breaks }
 let runCtrl = null;
 
 const els = {
@@ -350,7 +350,10 @@ function setStep(step) {
   });
 }
 
-async function plan(from, to, depart) {
+let breaksPref = store.get('wtt-breaks', 'off');
+if (!BREAKS[breaksPref]) breaksPref = 'off';
+
+async function plan(from, to, depart, { route = 0, breaks = breaksPref } = {}) {
   runCtrl?.abort();
   runCtrl = new AbortController();
   const { signal } = runCtrl;
@@ -364,15 +367,27 @@ async function plan(from, to, depart) {
   requestAnimationFrame(() => els.results.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }));
 
   try {
-    const route = await getRoute(from, to, { signal });
-    const points = sampleRoute(route);
+    const routes = await getRoutes(from, to, { signal });
+    const options = routes.map(r => ({ route: r, points: sampleRoute(r), names: null, alerts: [] }));
+
+    // One forecast request covers every checkpoint on every route.
     setStep('sky');
-    const forecasts = await getForecasts(points, { signal });
+    const all = options.flatMap(o => o.points);
+    const fcs = await getForecasts(all, { signal });
+    let k = 0;
+    options.forEach(o => { o.forecasts = fcs.slice(k, k + o.points.length); k += o.points.length; });
+
+    // Town names for the chosen route + official alerts for all routes, in parallel.
     setStep('names');
-    const names = await nameStops(points, from, to, signal);
+    const active = Math.min(Math.max(0, route | 0), options.length - 1);
+    const [names] = await Promise.all([
+      nameStops(options[active].points, from, to, signal),
+      fetchAlerts(options, signal),
+    ]);
+    options[active].names = names;
     if (signal.aborted) return;
 
-    trip = { from, to, route, points, forecasts, names, depart };
+    trip = { from, to, options, active, depart, breaks: BREAKS[breaks] ? breaks : 'off' };
     rememberTrip(from, to);
     writeURL();
     setPhase('trip');
@@ -392,58 +407,138 @@ async function plan(from, to, depart) {
   }
 }
 
+/** Run async jobs with limited concurrency, giving up (keeping partial results) after `ms`. */
+async function pool(jobs, size, ms) {
+  const queue = [...jobs];
+  const worker = async () => { while (queue.length) await queue.shift()(); };
+  await Promise.race([
+    Promise.all(Array.from({ length: size }, worker)),
+    new Promise(r => setTimeout(r, ms)),
+  ]);
+}
+
 async function nameStops(points, from, to, signal) {
   const names = new Array(points.length).fill(null);
   names[0] = from;
   names[points.length - 1] = to;
-  const queue = points.map((p, i) => i).slice(1, -1);
-  const worker = async () => {
-    while (queue.length) {
-      const i = queue.shift();
-      names[i] = await reversePlace(points[i].lat, points[i].lon, { signal }).catch(() => null);
-    }
-  };
-  // A little parallelism, politely capped; give up gracefully after 9 s.
-  await Promise.race([
-    Promise.all([worker(), worker(), worker(), worker()]),
-    new Promise(r => setTimeout(r, 9000)),
-  ]);
+  await pool(points.slice(1, -1).map((p, j) => async () => {
+    names[j + 1] = await reversePlace(p.lat, p.lon, { signal }).catch(() => null);
+  }), 4, 9000);
   return names;
+}
+
+/** NWS alerts for every checkpoint (deduplicated by ~10 km grid cell). */
+async function fetchAlerts(options, signal) {
+  const cells = new Map();
+  options.forEach(o => {
+    o.alerts = o.points.map(() => []);
+    o.points.forEach((p, i) => {
+      const key = `${p.lat.toFixed(1)},${p.lon.toFixed(1)}`;
+      if (!cells.has(key)) cells.set(key, { p, hits: [] });
+      cells.get(key).hits.push([o, i]);
+    });
+  });
+  await pool([...cells.values()].map(cell => async () => {
+    const list = await getAlerts(cell.p.lat, cell.p.lon, { signal }).catch(() => []);
+    cell.hits.forEach(([o, i]) => { o.alerts[i] = list; });
+  }), 5, 10000);
+}
+
+/** Everything the UI needs for one route option at the current departure + breaks. */
+function view(i = trip.active) {
+  const o = trip.options[i];
+  const b = withBreaks(o.points, o.route.duration, BREAKS[trip.breaks]);
+  const evald = evaluate(b.points, o.forecasts, trip.depart, o.alerts);
+  return { o, ...b, evald };
+}
+
+async function switchRoute(i) {
+  if (!trip || i === trip.active || !trip.options[i]) return;
+  const o = trip.options[i];
+  if (!o.names) {
+    $(`#routeCards [data-i="${i}"]`)?.classList.add('busy');
+    o.names = await nameStops(o.points, trip.from, trip.to);
+  }
+  trip.active = i;
+  writeURL();
+  render({ animate: true, fresh: true });
+}
+
+function setBreaks(key) {
+  if (!BREAKS[key] || !trip) return;
+  trip.breaks = breaksPref = key;
+  store.set('wtt-breaks', key);
+  writeURL();
+  render({ animate: false });
 }
 
 // ===================================================================
 // Rendering
 // ===================================================================
 function render({ animate = false, fresh = false } = {}) {
-  const { from, to, route, points, forecasts, names, depart } = trip;
-  const evald = evaluate(points, forecasts, depart);
-  const stops = evald.stops.map((s, k) => ({ ...s, place: names[k] }));
+  const { from, to, depart } = trip;
+  const v = view();
+  const { o, evald } = v;
+  const stops = evald.stops.map((s, k) => ({ ...s, place: o.names?.[k] }));
   const nowHour = Math.floor(Date.now() / 3600000) * 3600;
-  const options = scan(points, forecasts, nowHour, 72, route.duration);
+  const options = scan(v.points, o.forecasts, nowHour, 72, v.duration, o.alerts);
   const best = options.reduce((a, b) => (b.score != null && (a == null || b.score > a.score) ? b : a), null);
 
   // Header + stats
   $('#tripFrom').textContent = from.name;
   $('#tripTo').textContent = to.name;
-  const [dv, du] = fmt.dist(route.distance).split(' ');
+  const [dv, du] = fmt.dist(o.route.distance).split(' ');
   $('#statDist').innerHTML = `${dv}<small>${du === 'mi' ? 'miles' : 'kilometres'}</small>`;
-  const mins = Math.round(route.duration / 60);
-  $('#statTime').innerHTML = `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}<small>hrs : min</small>`;
+  const mins = Math.round(v.duration / 60);
+  const nb = v.breaks.length;
+  $('#statTime').innerHTML = `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}<small>${nb ? `incl. ${nb} break${nb > 1 ? 's' : ''}` : 'hrs : min'}</small>`;
   $('#statLeave').innerHTML = `${esc(fmt.time(depart))}<small>${esc(fmt.day(depart))}</small>`;
-  $('#statArrive').innerHTML = `${esc(fmt.time(depart + route.duration))}<small>${esc(fmt.day(depart + route.duration))}</small>`;
+  $('#statArrive').innerHTML = `${esc(fmt.time(depart + v.duration))}<small>${esc(fmt.day(depart + v.duration))}</small>`;
+  $$('#breaksSeg .seg-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.breaks === trip.breaks)));
 
-  renderVerdict(evald, stops, best, animate);
+  const alts = renderRoutes();
+  renderVerdict(evald, stops, best, animate, alts);
   renderOptimizer(options, best, depart);
   renderAdvice(stops, evald);
-  renderTimeline(stops, animate);
-  map.drawTrip(route, stops, { animate: fresh });
+  renderTimeline(stops, animate, v.breaks, o.route);
+  map.drawTrip(o.route, stops, {
+    animate: fresh,
+    alts: trip.options.map((x, i) => ({ i, coords: x.route.coords })).filter(x => x.i !== trip.active),
+  });
+}
+
+function renderRoutes() {
+  const block = $('#routesBlock');
+  if (trip.options.length < 2) { block.hidden = true; return []; }
+  block.hidden = false;
+  const rows = trip.options.map((o, i) => {
+    const v = view(i);
+    return { i, o, score: v.evald.score, dur: v.duration };
+  });
+  const fastest = rows.reduce((a, b) => (b.dur < a.dur ? b : a)).i;
+  const top = rows.reduce((a, b) => ((b.score ?? -1) > (a.score ?? -1) ? b : a)).i;
+  $('#routeCards').innerHTML = rows.map(r => {
+    const extra = Math.round((r.dur - rows[fastest].dur) / 60);
+    const tags = (r.i === fastest ? '<em>Fastest</em>' : `<em class="muted">+${extra} min</em>`) +
+      (r.i === top && top !== fastest ? '<em class="good">Best weather</em>' : '');
+    return `
+    <button type="button" class="route-card ${r.i === trip.active ? 'on' : ''}" data-i="${r.i}" aria-pressed="${r.i === trip.active}" data-band="${band(r.score)}">
+      <span class="rc-top">
+        <span class="rc-label">${esc(r.o.route.label)}</span>
+        <span class="rc-score" title="Road score">${r.score ?? '—'}</span>
+      </span>
+      <span class="rc-meta">${esc(fmt.duration(r.dur))} · ${esc(fmt.dist(r.o.route.distance))}</span>
+      <span class="rc-tags">${tags}</span>
+    </button>`;
+  }).join('');
+  return rows;
 }
 
 function placeLabel(s) {
   return s.place?.name || `mile ${fmt.distShort(s.d)}`;
 }
 
-function renderVerdict(evald, stops, best, animate) {
+function renderVerdict(evald, stops, best, animate, alts = []) {
   const score = evald.score;
   const b = band(score);
   const v = $('#verdict');
@@ -472,6 +567,9 @@ function renderVerdict(evald, stops, best, animate) {
   if (best && score != null && best.score - score >= 8 && Math.abs(best.dep - trip.depart) >= 3600) {
     text += ` Leaving ${fmt.dayHour(best.dep).replace('Today ', 'today at ').replace('Tomorrow ', 'tomorrow at ')} scores ${best.score}.`;
   }
+  const better = alts.filter(r => r.i !== trip.active && r.score != null && score != null && r.score - score >= 8)
+    .sort((a, b) => b.score - a.score)[0];
+  if (better) text += ` Going ${better.o.route.label} scores ${better.score}.`;
   if (evald.coverage < 1 && score != null) text += ' (Later stops are past the forecast horizon.)';
   $('#verdictText').textContent = text;
 
@@ -593,6 +691,24 @@ function renderAdvice(stops, evald) {
   const loStop = known.find(s => s.c.temp === lo), hiStop = known.find(s => s.c.temp === hi);
   const find = pred => known.find(pred);
 
+  // Official NWS alerts in force when you pass through.
+  // Same event in several forecast zones -> one card listing every town it touches.
+  const byEvent = new Map();
+  stops.forEach(s => (s.alerts || []).forEach(a => {
+    const e = byEvent.get(a.event) || { a, places: [], end: 0 };
+    const name = placeLabel(s);
+    if (!e.places.includes(name)) e.places.push(name);
+    e.end = Math.max(e.end, a.end);
+    byEvent.set(a.event, e);
+  }));
+  const rank = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 };
+  const list = names => (names.length <= 2 ? names.join(' and ') : names.length === 3 ? `${names[0]}, ${names[1]} and ${names[2]}` : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`);
+  [...byEvent.values()].sort((x, y) => (rank[x.a.severity] ?? 4) - (rank[y.a.severity] ?? 4)).slice(0, 3).forEach(({ a, places, end }) => {
+    const tone = a.severity === 'Extreme' || a.severity === 'Severe' ? 'danger' : a.severity === 'Moderate' ? 'warn' : 'info';
+    const until = Number.isFinite(end) ? ` · in effect until ${fmt.dayTime(end)}` : '';
+    items.push(['alert', tone, a.event, `Official NWS alert near ${list(places)}${until}.`, 'nws']);
+  });
+
   const icy = find(s => s.why === 'icy roads' || s.c.cat === 'freezing');
   if (icy) items.push(['snowflake', 'danger', 'Ice risk', `Freezing temps with moisture near ${placeLabel(icy)} around ${fmt.time(icy.eta)}. Slow down on bridges and overpasses.`]);
   const snow = find(s => s.c.cat === 'snow');
@@ -617,24 +733,47 @@ function renderAdvice(stops, evald) {
   if (!items.length) items.push(['check', 'good', 'Nothing to flag', 'No weather worth worrying about on this route. Just snacks.']);
   if (evald.coverage < 1) items.push(['alert', 'warn', 'Partial forecast', 'Part of this trip is beyond the forecast horizon, so it isn\'t scored.']);
 
-  $('#advice').innerHTML = items.slice(0, 6).map(([ic, tone, title, text]) => `
-    <li class="tip tone-${tone}">
+  $('#advice').innerHTML = items.slice(0, 7).map(([ic, tone, title, text, kind]) => `
+    <li class="tip tone-${tone} ${kind === 'nws' ? 'tip-nws' : ''}">
       <span class="tip-icon">${icon(ic)}</span>
       <span><strong>${esc(title)}</strong><span>${esc(text)}</span></span>
     </li>`).join('');
 }
 
 // ---------- Timeline ----------
-function renderTimeline(stops, animate) {
+function renderTimeline(stops, animate, breaks = [], route = null) {
   const last = stops.length - 1;
+  // Place each rest stop between the checkpoints it falls between (by driving time).
+  const distAt = drive => {
+    if (!route) return 0;
+    const i = route.cumT.findIndex(t => t >= drive);
+    return route.cumD[i < 0 ? route.cumD.length - 1 : i];
+  };
+  const breakRow = (b, idx) => {
+    const t = splitTime(trip.depart + b.at);
+    return `<li class="stop stop-break ${animate ? 'enter' : ''}" style="--i:${idx}">
+      <div class="stop-btn" role="note">
+        <span class="stop-time"><b>${esc(t.main)}</b><small>${esc(t.period)}</small></span>
+        <span class="stop-node" aria-hidden="true"></span>
+        <span class="stop-icon">${icon('cup')}</span>
+        <span class="stop-main"><span class="stop-name">${Math.round(b.len / 60)}-min break</span>
+        <span class="stop-sub">around ${fmt.distShort(distAt(b.drive))} ${fmt.distUnit()} · stretch, refuel, snack</span></span>
+      </div></li>`;
+  };
+  let bi = 0, row = 0;
   $('#timeline').innerHTML = stops.map((s, k) => {
+    let pre = '';
+    while (bi < breaks.length && breaks[bi].drive <= s.drive && k > 0) pre += breakRow(breaks[bi++], row++);
+    return pre + stopRow(s, k, row++);
+  }).join('');
+  function stopRow(s, k, rowIndex) {
     const t = splitTime(s.eta);
     const c = s.c;
     const role = k === 0 ? 'Start' : k === last ? 'Arrive' : `${fmt.distShort(s.d)} ${fmt.distUnit()}`;
     const sub = [s.place?.detail, role].filter(Boolean).join(' · ');
     const colorVar = c ? CAT_VAR[c.cat] : '--ink-3';
     const flag = s.h >= 0.35 && s.why ? `<span class="stop-flag">${icon('alert')}${esc(s.why)}</span>` : '';
-    return `<li class="stop ${k === 0 ? 'is-start' : ''} ${k === last ? 'is-end' : ''} ${animate ? 'enter' : ''}" style="--i:${k};--c:var(${colorVar})">
+    return `<li class="stop ${k === 0 ? 'is-start' : ''} ${k === last ? 'is-end' : ''} ${animate ? 'enter' : ''}" style="--i:${rowIndex};--c:var(${colorVar})">
       <button type="button" class="stop-btn" data-k="${k}" aria-label="${esc(placeLabel(s))}, ${esc(fmt.dayTime(s.eta))}${c ? `, ${esc(c.text)}, ${fmt.temp(c.temp)}` : ''}">
         <span class="stop-time"><b>${esc(t.main)}</b><small>${esc(t.period)}</small></span>
         <span class="stop-node" aria-hidden="true"></span>
@@ -650,9 +789,9 @@ function renderTimeline(stops, animate) {
         </span>
       </button>
     </li>`;
-  }).join('');
+  }
 
-  $$('#timeline .stop-btn').forEach(btn => {
+  $$('#timeline button.stop-btn').forEach(btn => {
     const k = Number(btn.dataset.k);
     btn.addEventListener('click', () => map.focus(k));
     btn.addEventListener('pointerenter', () => map.highlight(k, true));
@@ -691,6 +830,10 @@ const map = {
     this.m.on('click', () => this.m.scrollZoom.enable());
     this.m.getContainer().addEventListener('mouseleave', () => this.m.scrollZoom.disable());
     this.m.on('style.load', () => { this.tintStyle(); this.addLayers(); });
+    // Click a dashed alternative to switch to it.
+    this.m.on('click', 'alts-hit', e => { const i = e.features?.[0]?.properties?.i; if (i != null) switchRoute(Number(i)); });
+    this.m.on('mouseenter', 'alts-hit', () => { this.m.getCanvas().style.cursor = 'pointer'; });
+    this.m.on('mouseleave', 'alts-hit', () => { this.m.getCanvas().style.cursor = ''; });
     // The basemap references a few POI sprites we don't need; stub them quietly.
     this.m.on('styleimagemissing', e => {
       if (!this.m.hasImage(e.id)) this.m.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
@@ -724,6 +867,23 @@ const map = {
     if (this.m.getSource('route')) this.m.getSource('route').setData(data);
     else this.m.addSource('route', { type: 'geojson', data, lineMetrics: true });
     const firstLabel = this.m.getStyle().layers.find(l => l.type === 'symbol')?.id;
+    const altData = {
+      type: 'FeatureCollection',
+      features: (this.alts || []).map(a => ({ type: 'Feature', properties: { i: a.i }, geometry: { type: 'LineString', coordinates: a.coords.map(([la, lo]) => [lo, la]) } })),
+    };
+    if (this.m.getSource('alts')) this.m.getSource('alts').setData(altData);
+    else this.m.addSource('alts', { type: 'geojson', data: altData });
+    if (!this.m.getLayer('alts-line')) {
+      this.m.addLayer({
+        id: 'alts-line', type: 'line', source: 'alts',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': cssVar('--ink-3'), 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 3, 10, 5], 'line-dasharray': [1.2, 1.6], 'line-opacity': 0.85 },
+      }, firstLabel);
+      this.m.addLayer({
+        id: 'alts-hit', type: 'line', source: 'alts',
+        paint: { 'line-color': TRANSPARENT, 'line-width': 18 },
+      }, firstLabel);
+    }
     if (!this.m.getLayer('route-casing')) {
       this.m.addLayer({
         id: 'route-casing', type: 'line', source: 'route',
@@ -759,6 +919,8 @@ const map = {
     this.markers = []; this.endpoints = [];
     this.route = null;
     if (this.m?.getLayer('route-line')) { this.m.removeLayer('route-line'); this.m.removeLayer('route-casing'); this.m.removeSource('route'); }
+    if (this.m?.getLayer('alts-line')) { this.m.removeLayer('alts-hit'); this.m.removeLayer('alts-line'); this.m.removeSource('alts'); }
+    this.alts = [];
   },
   preview(a, b) {
     if (!this.m) return;
@@ -773,8 +935,9 @@ const map = {
     };
     this.endpoints = [mk(a, 'a', 'A'), mk(b, 'b', 'B')];
   },
-  drawTrip(route, stops, { animate }) {
+  drawTrip(route, stops, { animate, alts = [] }) {
     if (!this.m) return;
+    this.alts = alts;
     this.markers.forEach(m => m.remove());
     this.endpoints.forEach(m => m.remove());
     this.markers = []; this.endpoints = [];
@@ -827,6 +990,7 @@ const map = {
     if (animate) {
       const b = new maplibregl.LngLatBounds();
       route.coords.forEach(([la, lo]) => b.extend([lo, la]));
+      alts.forEach(a => a.coords.forEach(([la, lo]) => b.extend([lo, la])));
       this.m.resize();
       const wide = matchMedia('(min-width: 961px)').matches;
       this.m.fitBounds(b, { padding: wide ? { top: 70, bottom: 90, left: 70, right: 110 } : 50, duration: reduceMotion ? 0 : 1000, maxZoom: 11 });
@@ -855,10 +1019,10 @@ const map = {
     this.markers[k]?.togglePopup();
   },
   timelineHighlight(k, on) {
-    $$('#timeline .stop')[k]?.classList.toggle('is-active', on);
+    $$('#timeline .stop:not(.stop-break)')[k]?.classList.toggle('is-active', on);
   },
   timelineScroll(k) {
-    const li = $$('#timeline .stop')[k];
+    const li = $$('#timeline .stop:not(.stop-break)')[k];
     if (!li || matchMedia('(max-width: 960px)').matches) return;
     li.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
     li.classList.add('flash');
@@ -878,6 +1042,8 @@ const decPlace = s => {
 function writeURL() {
   if (!trip) return;
   const p = new URLSearchParams({ from: encPlace(trip.from), to: encPlace(trip.to), leave: String(trip.depart) });
+  if (trip.active) p.set('route', String(trip.active));
+  if (trip.breaks !== 'off') p.set('breaks', trip.breaks);
   history.replaceState(null, '', `${location.pathname}?${p}`);
 }
 
@@ -889,6 +1055,15 @@ $('#shareBtn').addEventListener('click', async () => {
   }
   try { await navigator.clipboard.writeText(url); toast('Link copied — send it to your co-pilot.'); }
   catch { prompt('Copy this link:', url); }
+});
+
+$('#routeCards').addEventListener('click', e => {
+  const card = e.target.closest('.route-card');
+  if (card) switchRoute(Number(card.dataset.i));
+});
+$('#breaksSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-breaks]');
+  if (b) setBreaks(b.dataset.breaks);
 });
 
 const backToPlanner = () => {
@@ -931,5 +1106,5 @@ if (reduceMotion) $('#sceneSvg')?.pauseAnimations?.();
   const now = Date.now() / 1000;
   if (!Number.isFinite(dep) || dep < now - 3600 || dep > now + 7 * 86400) dep = nowRounded();
   setDepart(dep);
-  plan(from, to, dep);
+  plan(from, to, dep, { route: parseInt(q.get('route'), 10) || 0, breaks: q.get('breaks') || breaksPref });
 })();

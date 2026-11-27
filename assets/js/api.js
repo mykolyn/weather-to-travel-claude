@@ -91,22 +91,24 @@ export async function reversePlace(lat, lon, { signal } = {}) {
   }
 }
 
-/** Fastest driving route with per-vertex cumulative time (s) and distance (m). */
-export async function getRoute(a, b, { signal } = {}) {
-  const url = `${OSRM}/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}` +
-    '?overview=full&geometries=geojson&annotations=duration,distance&alternatives=false&steps=false';
-  let data;
-  try {
-    data = await getJSON(url, { signal, timeout: 20000 });
-  } catch (err) {
-    if (err.name === 'AbortError') throw err;
-    if (err.body?.code) data = err.body; // e.g. NoRoute / NoSegment come back as HTTP 400
-    else throw new Error('The routing service didn\'t answer. Please try again in a moment.');
+// ---------- Routing ----------
+const normRef = ref => {
+  const first = String(ref).split(';')[0].trim();
+  return first.replace(/^(I|US|SR|CA|WA|OR|NV|AZ|UT|CO|TX|NY|FL|[A-Z]{2})\s+(\d+[A-Z]?)$/, '$1-$2');
+};
+
+/** Distance driven on each named road, biggest first. */
+function roadShares(leg) {
+  const by = new Map();
+  for (const st of leg.steps || []) {
+    const key = st.ref ? normRef(st.ref) : st.name;
+    if (!key) continue;
+    by.set(key, (by.get(key) || 0) + st.distance);
   }
-  if (data.code !== 'Ok' || !data.routes?.length) {
-    throw Object.assign(new Error('We couldn\'t find a drivable route between those two places. Are they on the same landmass?'), { kind: 'noroute' });
-  }
-  const r = data.routes[0];
+  return [...by.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+}
+
+function toRoute(r) {
   const coords = r.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
   const leg = r.legs[0];
   const cumT = [0], cumD = [0];
@@ -124,7 +126,61 @@ export async function getRoute(a, b, { signal } = {}) {
     cumD: cumD.map(d => d * kD),
     duration: r.duration,
     distance: r.distance,
+    roads: roadShares(leg),
   };
+}
+
+/** Fastest route plus up to two real alternatives, each labelled by its signature road. */
+export async function getRoutes(a, b, { signal } = {}) {
+  const url = `${OSRM}/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}` +
+    '?overview=full&geometries=geojson&annotations=duration,distance&alternatives=2&steps=true';
+  let data;
+  try {
+    data = await getJSON(url, { signal, timeout: 20000 });
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    if (err.body?.code) data = err.body; // e.g. NoRoute / NoSegment come back as HTTP 400
+    else throw new Error('The routing service didn\'t answer. Please try again in a moment.');
+  }
+  if (data.code !== 'Ok' || !data.routes?.length) {
+    throw Object.assign(new Error('We couldn\'t find a drivable route between those two places. Are they on the same landmass?'), { kind: 'noroute' });
+  }
+  const routes = data.routes.slice(0, 3).map(toRoute)
+    // Drop "alternatives" that are pointless detours.
+    .filter((r, i, all) => i === 0 || r.duration <= all[0].duration * 1.6);
+  // Label each route by the busiest road the others don't share.
+  routes.forEach((r, i) => {
+    const others = new Set(routes.filter((_, j) => j !== i).flatMap(o => o.roads.slice(0, 2)));
+    const own = r.roads.find(x => !others.has(x)) || r.roads[0] || '';
+    r.label = own ? `via ${own}` : (i === 0 ? 'Fastest route' : `Route ${i + 1}`);
+  });
+  return routes;
+}
+
+// ---------- Official alerts (US National Weather Service) ----------
+const NWS = 'https://api.weather.gov/alerts/active';
+
+/** Active NWS alerts covering a point. Returns [] outside the US or on failure. */
+export async function getAlerts(lat, lon, { signal } = {}) {
+  if (lon > -60 || lon < -180 || lat < 17 || lat > 72) return [];
+  try {
+    const data = await getJSON(`${NWS}?point=${lat.toFixed(3)},${lon.toFixed(3)}`, { signal, timeout: 8000 });
+    return (data.features || []).map(f => {
+      const p = f.properties;
+      return {
+        id: p.id || f.id,
+        event: p.event,
+        severity: p.severity,
+        headline: p.headline,
+        area: p.areaDesc,
+        start: Date.parse(p.onset || p.effective) / 1000 || 0,
+        end: Date.parse(p.ends || p.expires) / 1000 || Infinity,
+      };
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    return [];
+  }
 }
 
 const HOURLY = [

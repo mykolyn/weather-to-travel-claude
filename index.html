@@ -32,6 +32,7 @@
       <pattern id="h-water" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect class="hp-water" width="5" height="5"/><line class="hp-line-water" x1="0" y1="0" x2="0" y2="5"/></pattern>
       <pattern id="h-accent" width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-accent" width="3.4" height="3.4"/><line class="hp-line" x1="0" y1="0" x2="0" y2="3.4"/></pattern>
       <pattern id="h-icon" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-bg" width="5" height="5"/><line class="hp-line-icon" x1="0" y1="0" x2="0" y2="5"/></pattern>
+      <symbol id="i-cup" viewBox="0 0 24 24"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5Z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c-.6 1 .6 1.6 0 2.6M12 3.5c-.6 1 .6 1.6 0 2.6"/></symbol>
       <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
       <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
@@ -175,7 +176,7 @@
             <ol class="loading-steps" id="loadingSteps">
               <li data-step="route">Finding the fastest route</li>
               <li data-step="sky">Reading the sky along the way</li>
-              <li data-step="names">Naming the towns you'll pass</li>
+              <li data-step="names">Naming towns &amp; checking official alerts</li>
             </ol>
           </div>
 
@@ -207,6 +208,23 @@
               <div class="stat"><dt>Leave</dt><dd id="statLeave">—</dd></div>
               <div class="stat"><dt>Arrive</dt><dd id="statArrive">—</dd></div>
             </dl>
+
+            <div class="trip-opts">
+              <span class="trip-opts-label"><svg class="ico"><use href="#i-cup"/></svg>Breaks</span>
+              <div class="seg seg-wide" id="breaksSeg" role="group" aria-label="Rest stops">
+                <button type="button" class="seg-btn" data-breaks="off" aria-pressed="true">None</button>
+                <button type="button" class="seg-btn" data-breaks="short" aria-pressed="false">15 min / 2 h</button>
+                <button type="button" class="seg-btn" data-breaks="long" aria-pressed="false">30 min / 3 h</button>
+              </div>
+            </div>
+
+            <section class="block block-routes" id="routesBlock" hidden aria-labelledby="routesTitle">
+              <div class="block-head">
+                <h3 id="routesTitle" class="block-title"><svg class="ico"><use href="#i-route"/></svg>Compare routes</h3>
+                <p class="block-note">Scores update with your departure time</p>
+              </div>
+              <div class="route-cards" id="routeCards"></div>
+            </section>
 
             <article class="verdict" id="verdict">
               <div class="ring" aria-hidden="true">
@@ -253,7 +271,7 @@
               <ol class="timeline" id="timeline"></ol>
             </section>
 
-            <p class="fine">Forecasts from Open-Meteo, routing by OSRM, places from OpenStreetMap via Photon. Drive times exclude stops and traffic — always check local road conditions before you go.</p>
+            <p class="fine">Forecasts from Open-Meteo, official alerts from the US National Weather Service, routing by OSRM, places from OpenStreetMap via Photon. Drive times exclude stops and traffic — always check local road conditions before you go.</p>
           </div>
         </div>
 
