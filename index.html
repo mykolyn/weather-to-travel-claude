@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weather to Travel — the forecast for your whole drive</title>
+  <meta name="description" content="Plan a road trip and see the weather you'll actually drive through — town by town, at the hour you'll be there — plus the best time to leave.">
+  <meta name="theme-color" content="#F3EFE6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0D1016" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Weather to Travel">
+  <meta property="og:description" content="The forecast for your whole drive — town by town, hour by hour.">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Sans:wdth,wght@75..100,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" crossorigin="">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>
+    // Apply saved theme before paint to avoid a flash.
+    try { const t = localStorage.getItem('wtt-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- ================= UI icon sprite ================= -->
+  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+      <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24"><path d="M8 4v16"/><path d="m4 8 4-4 4 4"/><path d="M16 20V4"/><path d="m20 16-4 4-4-4"/></symbol>
+      <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/></symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 15h15a3 3 0 1 1-3 3"/><path d="M3 12h7"/></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/></symbol>
+      <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/><path d="M12 11v6"/></symbol>
+      <symbol id="i-umbrella" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0Z"/><path d="M12 12v6.5a2 2 0 0 1-4 0"/><path d="M12 3v0"/></symbol>
+      <symbol id="i-jacket" viewBox="0 0 24 24"><path d="M9 3 4.5 5.5 3 12l2.5 1V21h13v-8l2.5-1-1.5-6.5L15 3l-3 3Z"/><path d="M12 6v15"/></symbol>
+      <symbol id="i-glasses" viewBox="0 0 24 24"><circle cx="7" cy="14" r="3.5"/><circle cx="17" cy="14" r="3.5"/><path d="M10.5 14h3"/><path d="M3.5 14 5 7h2M20.5 14 19 7h-2"/></symbol>
+      <symbol id="i-snowflake" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+      <symbol id="i-fog" viewBox="0 0 24 24"><path d="M4 9h16M2 13h14M6 17h16"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 5 13.5h6L10 22l8-11.5h-6Z"/></symbol>
+      <symbol id="i-heat" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 9a4 4 0 0 1-8 0c0-2 1-3 1-3s.5 2 2 2c0-3-1-5 1-8Z"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.6M8.2 13.2l7.6 4.6"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+      <symbol id="i-car" viewBox="0 0 24 24"><path d="M4 16v-4l2-5h12l2 5v4"/><path d="M3 16h18v2H3z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="16.5" cy="18.5" r="1.5"/><path d="M4.5 12h15"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4.5h4.5"/><path d="M12 8v4l3 2"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20Z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#planner">Skip to trip planner</a>
+
+  <!-- ================= Top bar ================= -->
+  <header class="topbar" id="top">
+    <a class="brand" href="./" aria-label="Weather to Travel, home">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="26" cy="14" r="8" class="bm-sun"/>
+        <path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/>
+        <path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/>
+      </svg>
+      <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+    </a>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#story">Story</a>
+    </nav>
+    <div class="topbar-tools">
+      <div class="seg" role="group" aria-label="Units">
+        <button type="button" class="seg-btn" data-units="imperial" aria-pressed="true">°F</button>
+        <button type="button" class="seg-btn" data-units="metric" aria-pressed="false">°C</button>
+      </div>
+      <button type="button" class="icon-btn" id="themeToggle" aria-label="Toggle dark mode">
+        <svg class="ico ico-sun"><use href="#i-sun"/></svg>
+        <svg class="ico ico-moon"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ================= Hero + planner ================= -->
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Road-trip forecasting</p>
+          <h1 id="heroTitle" class="hero-title reveal">
+            <span class="ht-line">The forecast for</span>
+            <span class="ht-line">your <em class="ht-mark">whole</em> drive.</span>
+          </h1>
+          <p class="hero-lede reveal">Your destination's forecast only tells half the story. We read the sky at every town on your route — at the hour you'll actually roll through — and tell you the best time to leave.</p>
+          <ul class="hero-proof reveal" aria-label="Highlights">
+            <li><svg class="ico"><use href="#i-clock"/></svg>Hour-by-hour ETAs</li>
+            <li><svg class="ico"><use href="#i-route"/></svg>Town-by-town weather</li>
+            <li><svg class="ico"><use href="#i-star"/></svg>Best departure time</li>
+          </ul>
+        </div>
+
+        <form class="planner reveal" id="planner" autocomplete="off" novalidate aria-labelledby="plannerTitle">
+          <div class="planner-head">
+            <h2 id="plannerTitle" class="planner-title">Plan a drive</h2>
+            <span class="planner-badge">Free · no sign-up</span>
+          </div>
+
+          <div class="stops">
+            <div class="stop-rail" aria-hidden="true"><span class="rail-a"></span><span class="rail-line"></span><span class="rail-b"></span></div>
+            <div class="field combo" data-field="from">
+              <label for="fromInput">From</label>
+              <div class="field-row">
+                <input id="fromInput" type="text" placeholder="City, address or place" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fromList" spellcheck="false" required>
+                <button type="button" class="field-btn" id="locateBtn" aria-label="Use my current location" title="Use my location"><svg class="ico"><use href="#i-locate"/></svg></button>
+              </div>
+              <ul class="suggest" id="fromList" role="listbox" aria-label="Starting point suggestions"></ul>
+            </div>
+            <button type="button" class="swap-btn" id="swapBtn" aria-label="Swap start and destination" title="Swap"><svg class="ico"><use href="#i-swap"/></svg></button>
+            <div class="field combo" data-field="to">
+              <label for="toInput">To</label>
+              <div class="field-row">
+                <input id="toInput" type="text" placeholder="Where are you headed?" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="toList" spellcheck="false" required>
+              </div>
+              <ul class="suggest" id="toList" role="listbox" aria-label="Destination suggestions"></ul>
+            </div>
+          </div>
+
+          <div class="field field-when">
+            <label for="departInput"><svg class="ico"><use href="#i-clock"/></svg>Leave</label>
+            <div class="when-row">
+              <input id="departInput" type="datetime-local" required>
+              <div class="quick" role="group" aria-label="Quick departure times">
+                <button type="button" class="chip" data-quick="now">Now</button>
+                <button type="button" class="chip" data-quick="1h">In 1 hr</button>
+                <button type="button" class="chip" data-quick="tom8">Tomorrow 8 AM</button>
+              </div>
+            </div>
+          </div>
+
+          <p class="form-error" id="formError" role="alert" hidden></p>
+
+          <button type="submit" class="cta" id="submitBtn">
+            <span class="cta-label">Forecast my drive</span>
+            <svg class="ico cta-arrow"><use href="#i-arrow"/></svg>
+          </button>
+
+          <div class="samples">
+            <span class="samples-label" id="samplesLabel">Try</span>
+            <div class="samples-list" id="samplesList" aria-labelledby="samplesLabel"></div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Illustrated scene: the product idea in one picture — one road, three skies. -->
+      <div class="scene" aria-hidden="true">
+        <svg viewBox="0 0 1440 420" preserveAspectRatio="xMidYMax slice" id="sceneSvg">
+          <defs>
+            <linearGradient id="gSky" x1="0" x2="1">
+              <stop offset="0" stop-color="var(--sky-a)"/>
+              <stop offset=".55" stop-color="var(--sky-b)"/>
+              <stop offset="1" stop-color="var(--sky-c)"/>
+            </linearGradient>
+            <path id="roadPath" d="M-60 392 C 160 360, 260 300, 470 318 S 760 372, 930 318 S 1180 236, 1500 250"/>
+          </defs>
+          <rect x="0" y="0" width="1440" height="420" fill="url(#gSky)" class="sky"/>
+
+          <!-- Sun zone -->
+          <g class="z-sun" transform="translate(250 120)">
+            <g class="sun-rays">
+              <path d="M0-64v-18M0 64v18M-64 0h-18M64 0h18M-45-45l-13-13M45 45l13 13M-45 45l-13 13M45-45l13-13"/>
+            </g>
+            <circle r="40" class="sun-core"/>
+          </g>
+          <!-- Cloud zone -->
+          <g class="z-cloud">
+            <g class="cloud drift-a" transform="translate(640 96)">
+              <path d="M0 50h120a34 34 0 0 0 0-68 48 48 0 0 0-92-10A36 36 0 0 0 0 50Z"/>
+            </g>
+            <g class="cloud cloud-2 drift-b" transform="translate(790 150) scale(.6)">
+              <path d="M0 50h120a34 34 0 0 0 0-68 48 48 0 0 0-92-10A36 36 0 0 0 0 50Z"/>
+            </g>
+          </g>
+          <!-- Rain / snow zone -->
+          <g class="z-rain" transform="translate(1110 60)">
+            <g class="rain-lines">
+              <path d="M10 92l-8 22M40 92l-8 22M70 92l-8 22M100 92l-8 22M130 92l-8 22M160 92l-8 22"/>
+              <path d="M25 118l-8 22M55 118l-8 22M85 118l-8 22M115 118l-8 22M145 118l-8 22"/>
+            </g>
+            <path class="cloud cloud-dark" d="M-14 90h190a40 40 0 0 0 0-80 56 56 0 0 0-108-12A44 44 0 0 0-14 90Z"/>
+          </g>
+
+          <!-- Land -->
+          <path class="mtn" d="M860 300 L1010 170 L1080 232 L1170 140 L1290 258 L1360 200 L1440 250 V420 H860Z"/>
+          <path class="mtn-snow" d="M1010 170 L1040 196 L1022 194 L1000 206 L988 189Z M1170 140 L1205 175 L1186 172 L1168 186 L1150 162Z"/>
+          <path class="hill hill-back" d="M0 300 C 180 250, 360 270, 520 290 S 820 260, 980 290 S 1260 300, 1440 280 V420 H0Z"/>
+          <path class="hill hill-front" d="M0 360 C 220 330, 420 350, 640 368 S 1040 330, 1440 330 V420 H0Z"/>
+
+          <!-- Trees -->
+          <g class="trees">
+            <path d="M120 344l14-40 14 40Z M150 350l11-30 11 30Z M560 352l12-34 12 34Z M1240 322l12-34 12 34Z M1268 326l9-26 9 26Z"/>
+          </g>
+
+          <!-- Road -->
+          <use href="#roadPath" class="road-casing"/>
+          <use href="#roadPath" class="road"/>
+          <use href="#roadPath" class="road-dash"/>
+
+          <!-- Car rides the road -->
+          <g class="car">
+            <g transform="translate(-22 -26)">
+              <rect x="0" y="10" width="44" height="14" rx="5" class="car-body"/>
+              <path d="M8 10l6-9h16l7 9Z" class="car-body"/>
+              <path d="M12 9.5l4-6h5v6Z M23 9.5v-6h6l4 6Z" class="car-glass"/>
+              <circle cx="11" cy="24" r="5" class="car-wheel"/>
+              <circle cx="33" cy="24" r="5" class="car-wheel"/>
+            </g>
+            <animateMotion dur="16s" repeatCount="indefinite" rotate="auto" keyPoints="0;1" keyTimes="0;1" calcMode="linear">
+              <mpath href="#roadPath"/>
+            </animateMotion>
+          </g>
+
+          <!-- Forecast tags along the road -->
+          <g class="tag tag-1" transform="translate(300 300)">
+            <rect x="-44" y="-48" width="88" height="30" rx="15"/>
+            <text y="-28" text-anchor="middle">9 AM · 72°</text>
+            <path d="M0 -18v14"/>
+          </g>
+          <g class="tag tag-2" transform="translate(720 352)">
+            <rect x="-48" y="-48" width="96" height="30" rx="15"/>
+            <text y="-28" text-anchor="middle">11 AM · 61°</text>
+            <path d="M0 -18v14"/>
+          </g>
+          <g class="tag tag-3 tag-warn" transform="translate(1090 282)">
+            <rect x="-46" y="-48" width="92" height="30" rx="15"/>
+            <text y="-28" text-anchor="middle">2 PM · Rain</text>
+            <path d="M0 -18v14"/>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ================= Results ================= -->
+    <section class="results" id="results" hidden aria-live="polite" aria-labelledby="tripTitle">
+      <div class="results-grid">
+        <div class="panel" id="panel">
+          <!-- Loading state -->
+          <div class="loading" id="loading" hidden>
+            <div class="loading-road" aria-hidden="true"><span class="lr-car"><svg class="ico"><use href="#i-car"/></svg></span></div>
+            <ol class="loading-steps" id="loadingSteps">
+              <li data-step="route">Finding the fastest route</li>
+              <li data-step="sky">Reading the sky along the way</li>
+              <li data-step="names">Naming the towns you'll pass</li>
+            </ol>
+          </div>
+
+          <!-- Error state -->
+          <div class="error-card" id="errorCard" hidden>
+            <svg class="ico"><use href="#i-alert"/></svg>
+            <div>
+              <h3 id="errorTitle">Something went sideways</h3>
+              <p id="errorText"></p>
+              <button type="button" class="btn-ghost" id="errorBack"><svg class="ico"><use href="#i-edit"/></svg>Edit trip</button>
+            </div>
+          </div>
+
+          <div class="trip" id="trip" hidden>
+            <header class="trip-head">
+              <div>
+                <p class="eyebrow small">Your drive</p>
+                <h2 class="trip-title" id="tripTitle"><span id="tripFrom"></span><svg class="ico trip-arrow"><use href="#i-arrow"/></svg><span id="tripTo"></span></h2>
+              </div>
+              <div class="trip-actions">
+                <button type="button" class="icon-btn" id="shareBtn" aria-label="Copy share link" title="Copy link"><svg class="ico"><use href="#i-share"/></svg></button>
+                <button type="button" class="icon-btn" id="editBtn" aria-label="Edit trip" title="Edit trip"><svg class="ico"><use href="#i-edit"/></svg></button>
+              </div>
+            </header>
+
+            <dl class="stats">
+              <div class="stat"><dt>Distance</dt><dd id="statDist">—</dd></div>
+              <div class="stat"><dt>Drive time</dt><dd id="statTime">—</dd></div>
+              <div class="stat"><dt>Leave</dt><dd id="statLeave">—</dd></div>
+              <div class="stat"><dt>Arrive</dt><dd id="statArrive">—</dd></div>
+            </dl>
+
+            <article class="verdict" id="verdict">
+              <div class="ring" aria-hidden="true">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="52" class="ring-track"/>
+                  <circle cx="60" cy="60" r="52" class="ring-fill" id="ringFill" pathLength="100"/>
+                </svg>
+                <div class="ring-num"><span id="scoreNum">0</span><small>/100</small></div>
+              </div>
+              <div class="verdict-copy">
+                <p class="verdict-kicker">Road score</p>
+                <h3 class="verdict-title" id="verdictTitle">—</h3>
+                <p class="verdict-text" id="verdictText"></p>
+              </div>
+            </article>
+
+            <section class="block" aria-labelledby="optTitle">
+              <div class="block-head">
+                <h3 id="optTitle" class="block-title"><svg class="ico"><use href="#i-clock"/></svg>When to leave</h3>
+                <p class="block-note" id="optNote"></p>
+              </div>
+              <div class="opt" id="opt">
+                <div class="opt-bars" id="optBars" role="listbox" aria-label="Road score by departure hour" tabindex="0"></div>
+                <div class="opt-axis" id="optAxis" aria-hidden="true"></div>
+              </div>
+              <div class="opt-foot">
+                <div class="opt-legend" aria-hidden="true">
+                  <span><i class="lg lg-good"></i>Great</span><span><i class="lg lg-fair"></i>Fair</span><span><i class="lg lg-mixed"></i>Mixed</span><span><i class="lg lg-rough"></i>Rough</span>
+                </div>
+                <button type="button" class="btn-best" id="bestBtn" hidden><svg class="ico"><use href="#i-star"/></svg><span id="bestLabel"></span></button>
+              </div>
+            </section>
+
+            <section class="block" aria-labelledby="packTitle">
+              <div class="block-head"><h3 id="packTitle" class="block-title"><svg class="ico"><use href="#i-check"/></svg>Heads-up &amp; packing</h3></div>
+              <ul class="advice" id="advice"></ul>
+            </section>
+
+            <section class="block" aria-labelledby="tlTitle">
+              <div class="block-head">
+                <h3 id="tlTitle" class="block-title"><svg class="ico"><use href="#i-route"/></svg>Along the way</h3>
+                <p class="block-note">Tap a stop to find it on the map</p>
+              </div>
+              <ol class="timeline" id="timeline"></ol>
+            </section>
+
+            <p class="fine">Forecasts from Open-Meteo, routing by OSRM, places from OpenStreetMap via Photon. Drive times exclude stops and traffic — always check local road conditions before you go.</p>
+          </div>
+        </div>
+
+        <div class="map-wrap">
+          <div id="map" role="region" aria-label="Route map"></div>
+          <div class="map-legend" aria-hidden="true">
+            <span><i style="background:var(--w-clear)"></i>Clear</span>
+            <span><i style="background:var(--w-cloud)"></i>Cloudy</span>
+            <span><i style="background:var(--w-fog)"></i>Fog</span>
+            <span><i style="background:var(--w-rain)"></i>Rain</span>
+            <span><i style="background:var(--w-snow)"></i>Snow/ice</span>
+            <span><i style="background:var(--w-storm)"></i>Storm</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= How it works ================= -->
+    <section class="section how" id="how" aria-labelledby="howTitle">
+      <div class="section-head reveal">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>How it works</p>
+        <h2 id="howTitle" class="section-title">Weather moves. So do you.<br><span class="muted">We line the two up.</span></h2>
+      </div>
+      <ol class="steps">
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true">
+            <svg viewBox="0 0 120 80"><path class="sa-line" d="M14 64c20 0 22-22 46-22s30-26 46-26"/><circle class="sa-a" cx="14" cy="64" r="6"/><circle class="sa-b" cx="106" cy="16" r="6"/></svg>
+          </div>
+          <span class="step-n">01</span>
+          <h3>Route it</h3>
+          <p>Pick a start, a destination and when you're leaving. We find the fastest driving route and pin a checkpoint every few dozen miles.</p>
+        </li>
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true">
+            <svg viewBox="0 0 120 80"><path class="sa-line" d="M14 64c20 0 22-22 46-22s30-26 46-26"/>
+              <g class="sa-ticks"><circle cx="14" cy="64" r="4"/><circle cx="37" cy="52" r="4"/><circle cx="60" cy="42" r="4"/><circle cx="83" cy="30" r="4"/><circle cx="106" cy="16" r="4"/></g>
+              <text x="14" y="78" class="sa-t">9:00</text><text x="60" y="58" class="sa-t">10:40</text><text x="96" y="34" class="sa-t">12:15</text></svg>
+          </div>
+          <span class="step-n">02</span>
+          <h3>Time it</h3>
+          <p>For every checkpoint we work out when you'll actually get there — then pull that place's forecast for that exact hour.</p>
+        </li>
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true">
+            <svg viewBox="0 0 120 80"><g class="sa-bars"><rect x="10" y="40" width="10" height="30" rx="3"/><rect x="25" y="28" width="10" height="42" rx="3"/><rect x="40" y="18" width="10" height="52" rx="3" class="sa-best"/><rect x="55" y="30" width="10" height="40" rx="3"/><rect x="70" y="46" width="10" height="24" rx="3"/><rect x="85" y="54" width="10" height="16" rx="3"/><rect x="100" y="36" width="10" height="34" rx="3"/></g></svg>
+          </div>
+          <span class="step-n">03</span>
+          <h3>Score it</h3>
+          <p>Rain, snow, ice, fog and gusts roll up into a single road score — for now, and for every hour you could leave over the next three days.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================= Features ================= -->
+    <section class="section features" id="features" aria-labelledby="featTitle">
+      <div class="section-head reveal">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Features</p>
+        <h2 id="featTitle" class="section-title">Built for the drive,<br><span class="muted">not the destination.</span></h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature reveal">
+          <div class="f-icon f-clear" data-wx="clear"></div>
+          <h3>Arrival-time forecasts</h3>
+          <p>Not "today in Sacramento" — the sky over Sacramento at 10:42 AM, when you're there.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="storm"></div>
+          <h3>Best time to leave</h3>
+          <p>A 72-hour scan shows whether waiting two hours dodges the storm. Tap any hour to re-plan instantly.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="snow"></div>
+          <h3>Ice &amp; snow alerts</h3>
+          <p>Freezing temps plus moisture get flagged loudly — the stuff that turns a pass into a parking lot.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="partly"></div>
+          <h3>Pack-list nudges</h3>
+          <p>A 25° swing between start and finish? You'll know to throw a jacket in the back seat.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="fog"></div>
+          <h3>Share a link</h3>
+          <p>Every plan has a link. Send it to whoever's riding shotgun.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="rain"></div>
+          <h3>No keys, no sign-up</h3>
+          <p>Open data from Open-Meteo, OSRM and OpenStreetMap. Works on your phone at the gas station.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= Story ================= -->
+    <section class="section story" id="story" aria-labelledby="storyTitle">
+      <div class="story-card reveal">
+        <div class="story-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>The story</p>
+          <h2 id="storyTitle" class="section-title">Made for explorers,<br><span class="muted">by explorers.</span></h2>
+          <p>Weather to Travel started as a bootcamp project by four friends who kept getting caught in the rain halfway to somewhere sunny. This is the rebuild: same idea, sharper tools.</p>
+        </div>
+        <ul class="team" aria-label="Original team">
+          <li><span class="avatar" aria-hidden="true">H</span><a href="https://github.com/HebahM" rel="noopener">Hebah</a></li>
+          <li><span class="avatar" aria-hidden="true">J</span><a href="https://github.com/jenniferchan2267" rel="noopener">Jennifer</a></li>
+          <li><span class="avatar" aria-hidden="true">M</span><a href="https://github.com/mykolyn" rel="noopener">Michael</a></li>
+          <li><span class="avatar" aria-hidden="true">T</span><a href="https://github.com/tsully1990" rel="noopener">Tyler</a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <a class="brand" href="#top" aria-label="Back to top">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="26" cy="14" r="8" class="bm-sun"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/></svg>
+        <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+      </a>
+      <p class="footer-data">Weather <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> · Routing <a href="https://project-osrm.org/" rel="noopener">OSRM</a> · Places <a href="https://photon.komoot.io/" rel="noopener">Photon</a> · Maps <a href="https://openfreemap.org/" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a></p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin=""></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
