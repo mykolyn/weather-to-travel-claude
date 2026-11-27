@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weather to Travel — the forecast for your whole drive</title>
+  <meta name="description" content="Plan a road trip and see the weather you'll actually drive through — town by town, at the hour you'll be there — plus the best time to leave.">
+  <meta name="theme-color" content="#F3EFE6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0D1016" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Weather to Travel">
+  <meta property="og:description" content="The forecast for your whole drive — town by town, hour by hour.">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Sans:wdth,wght@75..100,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" crossorigin="">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>
+    // Apply saved theme before paint to avoid a flash.
+    try { const t = localStorage.getItem('wtt-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- ================= UI icon sprite ================= -->
+  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="h-light" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-bg" width="6" height="6"/><line class="hp-line" x1="0" y1="0" x2="0" y2="6"/></pattern>
+      <pattern id="h-dense" width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-bg" width="3.4" height="3.4"/><line class="hp-line" x1="0" y1="0" x2="0" y2="3.4"/></pattern>
+      <pattern id="h-dark" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect class="hp-bg-dark" width="3" height="3"/><line class="hp-line" x1="0" y1="0" x2="0" y2="3"/></pattern>
+      <pattern id="h-ground" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect class="hp-none" width="7" height="7"/><line class="hp-line" x1="0" y1="0" x2="0" y2="7"/></pattern>
+      <pattern id="h-water" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect class="hp-water" width="5" height="5"/><line class="hp-line-water" x1="0" y1="0" x2="0" y2="5"/></pattern>
+      <pattern id="h-accent" width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-accent" width="3.4" height="3.4"/><line class="hp-line" x1="0" y1="0" x2="0" y2="3.4"/></pattern>
+      <pattern id="h-icon" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hp-bg" width="5" height="5"/><line class="hp-line-icon" x1="0" y1="0" x2="0" y2="5"/></pattern>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+      <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24"><path d="M8 4v16"/><path d="m4 8 4-4 4 4"/><path d="M16 20V4"/><path d="m20 16-4 4-4-4"/></symbol>
+      <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/></symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 15h15a3 3 0 1 1-3 3"/><path d="M3 12h7"/></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/></symbol>
+      <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/><path d="M12 11v6"/></symbol>
+      <symbol id="i-umbrella" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0Z"/><path d="M12 12v6.5a2 2 0 0 1-4 0"/><path d="M12 3v0"/></symbol>
+      <symbol id="i-jacket" viewBox="0 0 24 24"><path d="M9 3 4.5 5.5 3 12l2.5 1V21h13v-8l2.5-1-1.5-6.5L15 3l-3 3Z"/><path d="M12 6v15"/></symbol>
+      <symbol id="i-glasses" viewBox="0 0 24 24"><circle cx="7" cy="14" r="3.5"/><circle cx="17" cy="14" r="3.5"/><path d="M10.5 14h3"/><path d="M3.5 14 5 7h2M20.5 14 19 7h-2"/></symbol>
+      <symbol id="i-snowflake" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+      <symbol id="i-fog" viewBox="0 0 24 24"><path d="M4 9h16M2 13h14M6 17h16"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 5 13.5h6L10 22l8-11.5h-6Z"/></symbol>
+      <symbol id="i-heat" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 9a4 4 0 0 1-8 0c0-2 1-3 1-3s.5 2 2 2c0-3-1-5 1-8Z"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.6M8.2 13.2l7.6 4.6"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+      <symbol id="i-car" viewBox="0 0 24 24"><path d="M4 16v-4l2-5h12l2 5v4"/><path d="M3 16h18v2H3z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="16.5" cy="18.5" r="1.5"/><path d="M4.5 12h15"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4.5h4.5"/><path d="M12 8v4l3 2"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20Z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#planner">Skip to trip planner</a>
+
+  <!-- ================= Top bar ================= -->
+  <header class="topbar" id="top">
+    <a class="brand" href="./" aria-label="Weather to Travel, home">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="26" cy="14" r="8" class="bm-sun"/>
+        <path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/>
+        <path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/>
+      </svg>
+      <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+    </a>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#story">Story</a>
+    </nav>
+    <div class="topbar-tools">
+      <div class="seg" role="group" aria-label="Units">
+        <button type="button" class="seg-btn" data-units="imperial" aria-pressed="true">°F</button>
+        <button type="button" class="seg-btn" data-units="metric" aria-pressed="false">°C</button>
+      </div>
+      <button type="button" class="icon-btn" id="themeToggle" aria-label="Toggle dark mode">
+        <svg class="ico ico-sun"><use href="#i-sun"/></svg>
+        <svg class="ico ico-moon"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ================= Hero + planner ================= -->
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Road-trip forecasting</p>
+          <h1 id="heroTitle" class="hero-title reveal">
+            <span class="ht-line">The forecast for</span>
+            <span class="ht-line">your <em class="ht-mark">whole</em> drive.</span>
+          </h1>
+          <p class="hero-lede reveal">The destination forecast is only half the story. We read the sky over every town on your route at the hour you'll roll through, and tell you the best time to leave.</p>
+        </div>
+
+        <form class="planner reveal" id="planner" autocomplete="off" novalidate aria-labelledby="plannerTitle">
+          <div class="planner-head">
+            <h2 id="plannerTitle" class="planner-title">Plan a drive</h2>
+            <span class="planner-badge">Free · no sign-up</span>
+          </div>
+
+          <div class="stops">
+            <div class="stop-rail" aria-hidden="true"><span class="rail-a"></span><span class="rail-line"></span><span class="rail-b"></span></div>
+            <div class="field combo" data-field="from">
+              <label for="fromInput">From</label>
+              <div class="field-row">
+                <input id="fromInput" type="text" placeholder="City, address or place" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fromList" spellcheck="false" required>
+                <button type="button" class="field-btn" id="locateBtn" aria-label="Use my current location" title="Use my location"><svg class="ico"><use href="#i-locate"/></svg></button>
+              </div>
+              <ul class="suggest" id="fromList" role="listbox" aria-label="Starting point suggestions"></ul>
+            </div>
+            <button type="button" class="swap-btn" id="swapBtn" aria-label="Swap start and destination" title="Swap"><svg class="ico"><use href="#i-swap"/></svg></button>
+            <div class="field combo" data-field="to">
+              <label for="toInput">To</label>
+              <div class="field-row">
+                <input id="toInput" type="text" placeholder="Where are you headed?" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="toList" spellcheck="false" required>
+              </div>
+              <ul class="suggest" id="toList" role="listbox" aria-label="Destination suggestions"></ul>
+            </div>
+          </div>
+
+          <div class="field field-when">
+            <label for="departInput"><svg class="ico"><use href="#i-clock"/></svg>Leave</label>
+            <div class="when-row">
+              <input id="departInput" type="datetime-local" required>
+              <div class="quick" role="group" aria-label="Quick departure times">
+                <button type="button" class="chip" data-quick="now">Now</button>
+                <button type="button" class="chip" data-quick="1h">In 1 hr</button>
+                <button type="button" class="chip" data-quick="tom8">Tomorrow 8 AM</button>
+              </div>
+            </div>
+          </div>
+
+          <p class="form-error" id="formError" role="alert" hidden></p>
+
+          <button type="submit" class="cta" id="submitBtn">
+            <span class="cta-label">Forecast my drive</span>
+            <svg class="ico cta-arrow"><use href="#i-arrow"/></svg>
+          </button>
+
+          <div class="samples">
+            <span class="samples-label" id="samplesLabel">Try</span>
+            <div class="samples-list" id="samplesList" aria-labelledby="samplesLabel"></div>
+          </div>
+        </form>
+
+        <!-- Isometric pen drawing (generated by tools/build_art.py): one road, three skies. -->
+        <figure class="scene reveal" aria-hidden="false">
+          <!-- art:hero --><svg class="iso" viewBox="-14 -392 790 620" id="sceneSvg" role="img" aria-label="Isometric pen drawing of a road crossing a landscape: sun over a town, clouds over a forest, rain over mountains"><polygon class="f-left" points="0.0,0.0 304.8,176.0 304.8,213.4 0.0,37.4"/><polygon class="f-right" points="304.8,176.0 762.1,-88.0 762.1,-50.6 304.8,213.4"/><polygon class="f-ground" points="0.0,0.0 457.3,-264.0 762.1,-88.0 304.8,176.0"/><polyline class="pen thin dash" points="0.0,16.8 304.8,192.8 762.1,-71.2"/><polygon class="f-road-side" points="131.5,75.9 173.4,100.1 173.4,105.4 131.5,81.2"/><polygon class="f-water" points="392.5,24.2 472.5,-30.8 533.5,-26.4 556.3,8.8 480.1,57.2 415.3,50.6"/><line class="pen thin water-line" x1="426.8" y1="26.4" x2="476.3" y2="-2.2"/><line class="pen thin water-line" x1="468.7" y1="24.2" x2="522.0" y2="-6.6"/><line class="pen thin water-line" x1="466.8" y1="45.1" x2="501.1" y2="25.3"/><polygon class="f-road" points="131.5,75.9 588.7,-188.1 630.6,-163.9 173.4,100.1"/><line class="pen" x1="131.5" y1="75.9" x2="588.7" y2="-188.1"/><line class="pen" x1="173.4" y1="100.1" x2="630.6" y2="-163.9"/><line class="pen road-dash" x1="152.4" y1="88.0" x2="609.7" y2="-176.0"/><polygon class="f-cloudshadow" points="278.2,-59.4 365.8,-110.0 407.7,-85.8 320.1,-35.2"/><polygon class="f-cloudshadow" points="522.0,-94.6 621.1,-151.8 670.7,-123.2 571.6,-66.0"/><path class="pen thin" d="M203.1 -56.7l1.5-3.5M206.1 -56.7v-4.5M209.1 -56.7l-1.5-3.5"/><path class="pen thin" d="M323.1 -151.5l1.5-3.5M326.1 -151.5v-4.5M329.1 -151.5l-1.5-3.5"/><path class="pen thin" d="M355.8 -74.9l1.5-3.5M358.8 -74.9v-4.5M361.8 -74.9l-1.5-3.5"/><path class="pen thin" d="M75.8 -2.8l1.5-3.5M78.8 -2.8v-4.5M81.8 -2.8l-1.5-3.5"/><path class="pen thin" d="M115.7 -17.0l1.5-3.5M118.7 -17.0v-4.5M121.7 -17.0l-1.5-3.5"/><path class="pen thin" d="M384.0 55.5l1.5-3.5M387.0 55.5v-4.5M390.0 55.5l-1.5-3.5"/><path class="pen thin" d="M402.4 -99.6l1.5-3.5M405.4 -99.6v-4.5M408.4 -99.6l-1.5-3.5"/><path class="pen thin" d="M275.5 -127.2l1.5-3.5M278.5 -127.2v-4.5M281.5 -127.2l-1.5-3.5"/><path class="pen thin" d="M301.3 -64.9l1.5-3.5M304.3 -64.9v-4.5M307.3 -64.9l-1.5-3.5"/><path class="pen thin" d="M562.0 -85.4l1.5-3.5M565.0 -85.4v-4.5M568.0 -85.4l-1.5-3.5"/><path class="pen thin" d="M651.1 -56.9l1.5-3.5M654.1 -56.9v-4.5M657.1 -56.9l-1.5-3.5"/><path class="pen thin" d="M413.1 -10.8l1.5-3.5M416.1 -10.8v-4.5M419.1 -10.8l-1.5-3.5"/><path class="pen thin" d="M376.0 12.1l1.5-3.5M379.0 12.1v-4.5M382.0 12.1l-1.5-3.5"/><path class="pen thin" d="M619.4 -64.8l1.5-3.5M622.4 -64.8v-4.5M625.4 -64.8l-1.5-3.5"/><path class="pen thin" d="M349.9 -105.0l1.5-3.5M352.9 -105.0v-4.5M355.9 -105.0l-1.5-3.5"/><path class="pen thin" d="M628.6 -126.6l1.5-3.5M631.6 -126.6v-4.5M634.6 -126.6l-1.5-3.5"/><path class="pen thin" d="M417.9 -28.7l1.5-3.5M420.9 -28.7v-4.5M423.9 -28.7l-1.5-3.5"/><path class="pen thin" d="M630.6 -98.6l1.5-3.5M633.6 -98.6v-4.5M636.6 -98.6l-1.5-3.5"/><path class="pen thin" d="M624.7 -89.4l1.5-3.5M627.7 -89.4v-4.5M630.7 -89.4l-1.5-3.5"/><path class="pen thin" d="M243.7 77.3l1.5-3.5M246.7 77.3v-4.5M249.7 77.3l-1.5-3.5"/><path class="pen thin" d="M65.9 -4.6l1.5-3.5M68.9 -4.6v-4.5M71.9 -4.6l-1.5-3.5"/><path class="pen thin" d="M182.4 -76.7l1.5-3.5M185.4 -76.7v-4.5M188.4 -76.7l-1.5-3.5"/><path class="pen thin" d="M62.6 24.6l1.5-3.5M65.6 24.6v-4.5M68.6 24.6l-1.5-3.5"/><path class="pen thin" d="M277.5 135.9l1.5-3.5M280.5 135.9v-4.5M283.5 135.9l-1.5-3.5"/><path class="pen thin" d="M328.5 -129.8l1.5-3.5M331.5 -129.8v-4.5M334.5 -129.8l-1.5-3.5"/><polygon class="f-left" points="464.9,-189.2 522.0,-156.2 522.0,-255.2"/><polygon class="f-right" points="522.0,-156.2 579.2,-189.2 522.0,-255.2"/><polygon class="f-snow" points="522.0,-255.2 503.7,-234.1 516.4,-238.8 522.0,-221.0 527.7,-238.8 540.3,-234.1"/><line class="pen thin" x1="522.0" y1="-255.2" x2="522.0" y2="-221.0"/><line class="pen" x1="522.0" y1="-255.2" x2="522.0" y2="-156.2"/><polygon class="f-left" points="331.5,-178.2 442.0,-114.4 443.9,-315.7"/><polygon class="f-right" points="442.0,-114.4 556.3,-180.4 443.9,-315.7"/><polygon class="f-snow" points="443.9,-315.7 403.5,-266.2 431.2,-277.9 443.2,-237.4 456.3,-278.1 484.4,-267.0"/><line class="pen thin" x1="443.9" y1="-315.7" x2="443.2" y2="-237.4"/><line class="pen" x1="443.9" y1="-315.7" x2="442.0" y2="-114.4"/><polygon class="f-left" points="301.0,-160.6 362.0,-125.4 362.0,-235.4"/><polygon class="f-right" points="362.0,-125.4 423.0,-160.6 362.0,-235.4"/><polygon class="f-snow" points="362.0,-235.4 343.7,-213.0 356.3,-218.2 362.0,-199.8 367.7,-218.2 380.3,-213.0"/><line class="pen thin" x1="362.0" y1="-235.4" x2="362.0" y2="-199.8"/><line class="pen" x1="362.0" y1="-235.4" x2="362.0" y2="-125.4"/><ellipse class="f-shadow" cx="300.1" cy="-134.2" rx="14.6" ry="5.3"/><line class="pen" x1="293.4" y1="-134.2" x2="293.4" y2="-143.5"/><polygon class="f-top" points="280.1,-142.2 293.4,-170.1 306.7,-142.2"/><polygon class="f-right" points="293.4,-141.2 293.4,-170.1 306.7,-142.2"/><polygon class="f-top" points="282.8,-154.2 293.4,-180.8 304.1,-154.2"/><polygon class="f-right" points="293.4,-153.2 293.4,-180.8 304.1,-154.2"/><ellipse class="f-shadow" cx="364.5" cy="-114.4" rx="14.0" ry="5.1"/><line class="pen" x1="358.2" y1="-114.4" x2="358.2" y2="-123.3"/><polygon class="f-top" points="345.5,-122.0 358.2,-148.7 370.9,-122.0"/><polygon class="f-right" points="358.2,-121.0 358.2,-148.7 370.9,-122.0"/><polygon class="f-top" points="348.0,-133.5 358.2,-158.9 368.4,-133.5"/><polygon class="f-right" points="358.2,-132.5 358.2,-158.9 368.4,-133.5"/><ellipse class="f-shadow" cx="278.1" cy="-99.0" rx="16.6" ry="6.1"/><line class="pen" x1="270.5" y1="-99.0" x2="270.5" y2="-109.6"/><polygon class="f-top" points="255.4,-108.1 270.5,-139.8 285.7,-108.1"/><polygon class="f-right" points="270.5,-107.1 270.5,-139.8 285.7,-108.1"/><polygon class="f-top" points="258.4,-121.7 270.5,-151.9 282.6,-121.7"/><polygon class="f-right" points="270.5,-120.7 270.5,-151.9 282.6,-121.7"/><ellipse class="f-shadow" cx="357.9" cy="-82.5" rx="12.0" ry="4.4"/><line class="pen" x1="352.5" y1="-82.5" x2="352.5" y2="-90.1"/><polygon class="f-top" points="341.6,-89.0 352.5,-111.9 363.4,-89.0"/><polygon class="f-right" points="352.5,-88.0 352.5,-111.9 363.4,-89.0"/><polygon class="f-top" points="343.8,-98.8 352.5,-120.6 361.2,-98.8"/><polygon class="f-right" points="352.5,-97.8 352.5,-120.6 361.2,-98.8"/><ellipse class="f-shadow" cx="219.5" cy="-68.2" rx="19.8" ry="7.3"/><line class="pen" x1="209.6" y1="-68.2" x2="209.6" y2="-102.8"/><circle class="f-top" cx="209.6" cy="-102.8" r="20.5"/><path class="f-right" d="M209.6 -123.3A20.5 20.5 0 0 1 209.6 -82.4A9.2 20.5 0 0 0 209.6 -123.3Z"/><ellipse class="f-shadow" cx="307.1" cy="-59.4" rx="13.3" ry="4.8"/><line class="pen" x1="301.0" y1="-59.4" x2="301.0" y2="-67.9"/><polygon class="f-top" points="288.9,-66.7 301.0,-92.1 313.1,-66.7"/><polygon class="f-right" points="301.0,-65.7 301.0,-92.1 313.1,-66.7"/><polygon class="f-top" points="291.4,-77.5 301.0,-101.8 310.7,-77.5"/><polygon class="f-right" points="301.0,-76.5 301.0,-101.8 310.7,-77.5"/><polygon class="f-left" points="106.7,-35.2 139.1,-16.5 139.1,-84.7 106.7,-103.4"/><polygon class="f-right" points="139.1,-16.5 169.6,-34.1 169.6,-102.3 139.1,-84.7"/><polygon class="f-top" points="106.7,-103.4 137.2,-121.0 169.6,-102.3 139.1,-84.7"/><polygon class="f-win" points="145.2,-37.1 151.9,-40.9 151.9,-49.1 145.2,-45.3"/><polygon class="f-win" points="157.4,-44.1 164.1,-48.0 164.1,-56.2 157.4,-52.3"/><polygon class="f-win" points="145.2,-54.1 151.9,-58.0 151.9,-66.2 145.2,-62.3"/><polygon class="f-win" points="157.4,-61.2 164.1,-65.0 164.1,-73.2 157.4,-69.3"/><polygon class="f-win" points="145.2,-71.2 151.9,-75.0 151.9,-83.2 145.2,-79.4"/><polygon class="f-win" points="157.4,-78.2 164.1,-82.1 164.1,-90.3 157.4,-86.4"/><ellipse class="f-shadow" cx="252.8" cy="-22.0" rx="17.8" ry="6.5"/><line class="pen" x1="243.9" y1="-22.0" x2="243.9" y2="-53.2"/><circle class="f-top" cx="243.9" cy="-53.2" r="18.4"/><path class="f-right" d="M243.9 -71.6A18.4 18.4 0 0 1 243.9 -34.8A8.3 18.4 0 0 0 243.9 -71.6Z"/><polygon class="f-left" points="83.8,22.0 129.6,48.4 129.6,11.0 83.8,-15.4"/><polygon class="f-right" points="129.6,48.4 177.2,20.9 177.2,-16.5 129.6,11.0"/><polygon class="f-top" points="83.8,-15.4 131.5,-42.9 177.2,-16.5 129.6,11.0"/><polygon class="f-win" points="138.1,24.7 147.7,19.2 147.7,8.8 138.1,14.3"/><polygon class="f-win" points="159.1,12.6 168.6,7.1 168.6,-3.3 159.1,2.2"/><polygon class="f-win" points="99.8,31.2 111.3,37.8 111.3,17.3 99.8,10.7"/><polygon class="f-roof-l" points="77.7,-15.4 129.6,14.5 130.5,-40.1"/><polygon class="f-roof-r" points="129.6,14.5 183.3,-16.5 130.5,-40.1"/><line class="pen" x1="130.5" y1="-40.1" x2="129.6" y2="14.5"/><g class="car-wrap"><g class="car"><animateTransform attributeName="transform" type="translate" dur="14s" repeatCount="indefinite" values="155.1 98.3;566.6 -139.3" keyTimes="0;1" calcMode="linear"/><animate attributeName="opacity" dur="14s" repeatCount="indefinite" values="0;1;1;0" keyTimes="0;.05;.93;1"/><polygon class="f-shadow" points="-17.5,-5.7 33.9,-35.4 61.3,-19.6 9.9,10.1"/><polygon class="car-left" points="-11.4,-12.8 11.4,0.4 11.4,-12.8 -11.4,-26.0"/><polygon class="car-right" points="11.4,0.4 55.3,-24.9 55.3,-38.1 11.4,-12.8"/><polygon class="car-top" points="-11.4,-26.0 32.4,-51.3 55.3,-38.1 11.4,-12.8"/><polygon class="car-glass" points="0.8,-31.2 20.6,-19.8 20.6,-31.2 0.8,-42.7"/><polygon class="car-glass" points="20.6,-19.8 41.2,-31.7 41.2,-43.1 20.6,-31.2"/><polygon class="car-top" points="0.8,-42.7 21.3,-54.6 41.2,-43.1 20.6,-31.2"/><polygon class="car-wheel" points="27.1,-8.6 26.6,-11.0 25.3,-12.5 23.3,-12.9 21.0,-12.1 18.6,-10.2 16.6,-7.5 15.3,-4.5 14.9,-1.5 15.3,0.9 16.6,2.4 18.6,2.8 21.0,2.0 23.3,0.1 25.3,-2.6 26.6,-5.6"/><polygon class="car-wheel" points="51.8,-22.9 51.4,-25.3 50.0,-26.8 48.1,-27.2 45.7,-26.4 43.4,-24.5 41.4,-21.8 40.1,-18.8 39.6,-15.8 40.1,-13.4 41.4,-11.9 43.4,-11.5 45.7,-12.3 48.1,-14.2 50.0,-16.9 51.4,-19.9"/></g></g><ellipse class="f-shadow" cx="624.9" cy="-147.4" rx="6" ry="2.5"/><line class="pen" x1="624.9" y1="-147.4" x2="624.9" y2="-204.6"/><path class="flag-b" d="M624.9 -204.6l27.3 5.3-5.3 7.0 5.3 7.0L624.9 -187.0Z"/><ellipse class="f-shadow" cx="600.5" cy="-110.0" rx="13.3" ry="4.8"/><line class="pen" x1="594.4" y1="-110.0" x2="594.4" y2="-118.5"/><polygon class="f-top" points="582.3,-117.3 594.4,-142.7 606.5,-117.3"/><polygon class="f-right" points="594.4,-116.3 594.4,-142.7 606.5,-117.3"/><polygon class="f-top" points="584.8,-128.2 594.4,-152.4 604.1,-128.2"/><polygon class="f-right" points="594.4,-127.2 594.4,-152.4 604.1,-128.2"/><ellipse class="f-shadow" cx="677.9" cy="-101.2" rx="16.0" ry="5.8"/><line class="pen" x1="670.7" y1="-101.2" x2="670.7" y2="-111.4"/><polygon class="f-top" points="656.1,-109.9 670.7,-140.4 685.2,-109.9"/><polygon class="f-right" points="670.7,-108.9 670.7,-140.4 685.2,-109.9"/><polygon class="f-top" points="659.0,-123.0 670.7,-152.0 682.3,-123.0"/><polygon class="f-right" points="670.7,-122.0 670.7,-152.0 682.3,-123.0"/><ellipse class="f-shadow" cx="527.8" cy="-63.8" rx="12.6" ry="4.6"/><line class="pen" x1="522.0" y1="-63.8" x2="522.0" y2="-71.8"/><polygon class="f-top" points="510.5,-70.7 522.0,-94.8 533.5,-70.7"/><polygon class="f-right" points="522.0,-69.7 522.0,-94.8 533.5,-70.7"/><polygon class="f-top" points="512.8,-81.0 522.0,-104.0 531.2,-81.0"/><polygon class="f-right" points="522.0,-80.0 522.0,-104.0 531.2,-81.0"/><ellipse class="f-shadow" cx="672.0" cy="-55.0" rx="11.3" ry="4.1"/><line class="pen" x1="666.8" y1="-55.0" x2="666.8" y2="-62.2"/><polygon class="f-top" points="656.6,-61.2 666.8,-82.8 677.1,-61.2"/><polygon class="f-right" points="666.8,-60.2 666.8,-82.8 677.1,-61.2"/><polygon class="f-top" points="658.6,-70.4 666.8,-91.0 675.1,-70.4"/><polygon class="f-right" points="666.8,-69.4 666.8,-91.0 675.1,-70.4"/><ellipse class="f-shadow" cx="616.6" cy="-52.8" rx="15.3" ry="5.6"/><line class="pen" x1="609.7" y1="-52.8" x2="609.7" y2="-62.5"/><polygon class="f-top" points="595.8,-61.1 609.7,-90.4 623.6,-61.1"/><polygon class="f-right" points="609.7,-60.1 609.7,-90.4 623.6,-61.1"/><polygon class="f-top" points="598.5,-73.7 609.7,-101.5 620.8,-73.7"/><polygon class="f-right" points="609.7,-72.7 609.7,-101.5 620.8,-73.7"/><ellipse class="f-shadow" cx="317.2" cy="63.8" rx="17.2" ry="6.3"/><line class="pen" x1="308.7" y1="63.8" x2="308.7" y2="33.8"/><circle class="f-top" cx="308.7" cy="33.8" r="17.7"/><path class="f-right" d="M308.7 16.0A17.7 17.7 0 0 1 308.7 51.5A8.0 17.7 0 0 0 308.7 16.0Z"/><ellipse class="f-shadow" cx="398.2" cy="79.2" rx="19.1" ry="7.0"/><line class="pen" x1="388.7" y1="79.2" x2="388.7" y2="45.7"/><circle class="f-top" cx="388.7" cy="45.7" r="19.8"/><path class="f-right" d="M388.7 25.9A19.8 19.8 0 0 1 388.7 65.5A8.9 19.8 0 0 0 388.7 25.9Z"/><polygon class="f-left" points="215.3,97.9 257.2,122.1 257.2,91.3 215.3,67.1"/><polygon class="f-right" points="257.2,122.1 302.9,95.7 302.9,64.9 257.2,91.3"/><polygon class="f-top" points="215.3,67.1 261.0,40.7 302.9,64.9 257.2,91.3"/><polygon class="f-win" points="265.4,101.9 274.6,96.7 274.6,88.0 265.4,93.3"/><polygon class="f-win" points="285.6,90.3 294.7,85.1 294.7,76.4 285.6,81.7"/><polygon class="f-win" points="230.0,106.4 240.4,112.4 240.4,95.5 230.0,89.4"/><polygon class="f-roof-l" points="209.2,67.1 257.2,94.8 259.1,44.0"/><polygon class="f-roof-r" points="257.2,94.8 309.0,64.9 259.1,44.0"/><line class="pen" x1="259.1" y1="44.0" x2="257.2" y2="94.8"/><ellipse class="f-shadow" cx="194.3" cy="101.2" rx="6" ry="2.5"/><line class="pen" x1="194.3" y1="101.2" x2="194.3" y2="57.2"/><path class="flag-a" d="M194.3 57.2l27.3 5.3-5.3 7.0 5.3 7.0L194.3 74.8Z"/><g class="sun"><g class="sun-rays pen" style="transform-origin:99.1px -316.8px"><line x1="143.1" y1="-316.8" x2="157.1" y2="-316.8"/><line x1="137.2" y1="-294.8" x2="149.3" y2="-287.8"/><line x1="121.1" y1="-278.7" x2="128.1" y2="-266.6"/><line x1="99.1" y1="-272.8" x2="99.1" y2="-258.8"/><line x1="77.1" y1="-278.7" x2="70.1" y2="-266.6"/><line x1="61.0" y1="-294.8" x2="48.8" y2="-287.8"/><line x1="55.1" y1="-316.8" x2="41.1" y2="-316.8"/><line x1="61.0" y1="-338.8" x2="48.8" y2="-345.8"/><line x1="77.1" y1="-354.9" x2="70.1" y2="-367.0"/><line x1="99.1" y1="-360.8" x2="99.1" y2="-374.8"/><line x1="121.1" y1="-354.9" x2="128.1" y2="-367.0"/><line x1="137.2" y1="-338.8" x2="149.3" y2="-345.8"/></g><circle class="sun-core" cx="99.1" cy="-316.8" r="34"/><path class="sun-shade" d="M111.1 -348.8A34 34 0 0 1 111.1 -284.8A30 34 0 0 0 111.1 -348.8Z"/></g><g class="birds pen"><path d="M190.5 -378.4q6-6 12 0q6-6 12 0"/><path d="M224.5 -364.4q4-4 8 0q4-4 8 0"/></g><g class="cloud drift-a"><polygon class="f-cloud" points="278.2,-213.4 320.1,-189.2 320.1,-209.0 278.2,-233.2"/><polygon class="f-right" points="320.1,-189.2 407.7,-239.8 407.7,-259.6 320.1,-209.0"/><polygon class="f-cloud" points="278.2,-233.2 365.8,-283.8 407.7,-259.6 320.1,-209.0"/><polygon class="f-cloud" points="304.8,-239.8 331.5,-224.4 331.5,-244.2 304.8,-259.6"/><polygon class="f-right" points="331.5,-224.4 377.2,-250.8 377.2,-270.6 331.5,-244.2"/><polygon class="f-cloud" points="304.8,-259.6 350.6,-286.0 377.2,-270.6 331.5,-244.2"/></g><g class="rain"><line x1="569.1" y1="-291.9" x2="569.1" y2="-122.5" style="animation-delay:-0.85s"/><line x1="636.3" y1="-314.0" x2="636.3" y2="-144.6" style="animation-delay:-0.48s"/><line x1="545.0" y1="-278.9" x2="545.0" y2="-109.5" style="animation-delay:-0.34s"/><line x1="590.4" y1="-270.0" x2="590.4" y2="-100.6" style="animation-delay:-0.16s"/><line x1="575.3" y1="-255.3" x2="575.3" y2="-85.9" style="animation-delay:-0.53s"/><line x1="568.5" y1="-271.2" x2="568.5" y2="-101.8" style="animation-delay:-0.03s"/><line x1="618.8" y1="-279.1" x2="618.8" y2="-109.7" style="animation-delay:-0.86s"/><line x1="602.8" y1="-304.6" x2="602.8" y2="-135.2" style="animation-delay:-0.37s"/><line x1="579.8" y1="-266.6" x2="579.8" y2="-97.2" style="animation-delay:-0.53s"/><line x1="612.6" y1="-306.9" x2="612.6" y2="-137.5" style="animation-delay:-0.22s"/><line x1="642.8" y1="-292.6" x2="642.8" y2="-123.2" style="animation-delay:-0.85s"/><line x1="635.3" y1="-296.4" x2="635.3" y2="-127.0" style="animation-delay:-0.74s"/><line x1="574.2" y1="-275.6" x2="574.2" y2="-106.2" style="animation-delay:-0.36s"/><line x1="537.1" y1="-277.9" x2="537.1" y2="-108.5" style="animation-delay:-0.28s"/><line x1="584.2" y1="-273.0" x2="584.2" y2="-103.6" style="animation-delay:-0.96s"/><line x1="610.2" y1="-276.2" x2="610.2" y2="-106.8" style="animation-delay:-0.99s"/></g><g class="cloud drift-b"><polygon class="f-cloud" points="522.0,-275.0 571.6,-246.4 571.6,-268.4 522.0,-297.0"/><polygon class="f-right-dark" points="571.6,-246.4 670.7,-303.6 670.7,-325.6 571.6,-268.4"/><polygon class="f-cloud" points="522.0,-297.0 621.1,-354.2 670.7,-325.6 571.6,-268.4"/><polygon class="f-cloud" points="537.3,-314.6 564.0,-299.2 564.0,-321.2 537.3,-336.6"/><polygon class="f-right-dark" points="564.0,-299.2 598.3,-319.0 598.3,-341.0 564.0,-321.2"/><polygon class="f-cloud" points="537.3,-336.6 571.6,-356.4 598.3,-341.0 564.0,-321.2"/><polygon class="f-cloud" points="548.7,-303.6 583.0,-283.8 583.0,-308.0 548.7,-327.8"/><polygon class="f-right-dark" points="583.0,-283.8 640.2,-316.8 640.2,-341.0 583.0,-308.0"/><polygon class="f-cloud" points="548.7,-327.8 605.9,-360.8 640.2,-341.0 583.0,-308.0"/></g><g class="tag tag-1"><line class="pen thin dash" x1="251.5" y1="30.8" x2="251.5" y2="-83.6"/><circle class="tag-dot" cx="251.5" cy="30.8" r="3.5"/><rect x="195.5" y="-113.6" width="112" height="30" rx="15"/><text x="251.5" y="-93.6" text-anchor="middle">9:00 · 72°</text></g><g class="tag tag-2"><line class="pen thin dash" x1="369.6" y1="-37.4" x2="369.6" y2="-138.6"/><circle class="tag-dot" cx="369.6" cy="-37.4" r="3.5"/><rect x="309.6" y="-168.6" width="120" height="30" rx="15"/><text x="369.6" y="-148.6" text-anchor="middle">10:40 · 61°</text></g><g class="tag tag-3 tag-warn"><line class="pen thin dash" x1="468.7" y1="-94.6" x2="468.7" y2="-297.0"/><circle class="tag-dot" cx="468.7" cy="-94.6" r="3.5"/><rect x="406.7" y="-327.0" width="124" height="30" rx="15"/><text x="468.7" y="-307.0" text-anchor="middle">12:15 · Rain</text></g></svg><!-- /art:hero -->
+        </figure>
+      </div>
+
+</section>
+
+    <!-- ================= Results ================= -->
+    <section class="results" id="results" hidden aria-live="polite" aria-labelledby="tripTitle">
+      <div class="results-grid">
+        <div class="panel" id="panel">
+          <!-- Loading state -->
+          <div class="loading" id="loading" hidden>
+            <div class="loading-road" aria-hidden="true"><span class="lr-car"><svg class="ico"><use href="#i-car"/></svg></span></div>
+            <ol class="loading-steps" id="loadingSteps">
+              <li data-step="route">Finding the fastest route</li>
+              <li data-step="sky">Reading the sky along the way</li>
+              <li data-step="names">Naming the towns you'll pass</li>
+            </ol>
+          </div>
+
+          <!-- Error state -->
+          <div class="error-card" id="errorCard" hidden>
+            <svg class="ico"><use href="#i-alert"/></svg>
+            <div>
+              <h3 id="errorTitle">Something went sideways</h3>
+              <p id="errorText"></p>
+              <button type="button" class="btn-ghost" id="errorBack"><svg class="ico"><use href="#i-edit"/></svg>Edit trip</button>
+            </div>
+          </div>
+
+          <div class="trip" id="trip" hidden>
+            <header class="trip-head">
+              <div>
+                <p class="eyebrow small">Your drive</p>
+                <h2 class="trip-title" id="tripTitle"><span id="tripFrom"></span><svg class="ico trip-arrow"><use href="#i-arrow"/></svg><span id="tripTo"></span></h2>
+              </div>
+              <div class="trip-actions">
+                <button type="button" class="icon-btn" id="shareBtn" aria-label="Copy share link" title="Copy link"><svg class="ico"><use href="#i-share"/></svg></button>
+                <button type="button" class="icon-btn" id="editBtn" aria-label="Edit trip" title="Edit trip"><svg class="ico"><use href="#i-edit"/></svg></button>
+              </div>
+            </header>
+
+            <dl class="stats">
+              <div class="stat"><dt>Distance</dt><dd id="statDist">—</dd></div>
+              <div class="stat"><dt>Drive time</dt><dd id="statTime">—</dd></div>
+              <div class="stat"><dt>Leave</dt><dd id="statLeave">—</dd></div>
+              <div class="stat"><dt>Arrive</dt><dd id="statArrive">—</dd></div>
+            </dl>
+
+            <article class="verdict" id="verdict">
+              <div class="ring" aria-hidden="true">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="52" class="ring-track"/>
+                  <circle cx="60" cy="60" r="52" class="ring-fill" id="ringFill" pathLength="100"/>
+                </svg>
+                <div class="ring-num"><span id="scoreNum">0</span><small>/100</small></div>
+              </div>
+              <div class="verdict-copy">
+                <p class="verdict-kicker">Road score</p>
+                <h3 class="verdict-title" id="verdictTitle">—</h3>
+                <p class="verdict-text" id="verdictText"></p>
+              </div>
+            </article>
+
+            <section class="block" aria-labelledby="optTitle">
+              <div class="block-head">
+                <h3 id="optTitle" class="block-title"><svg class="ico"><use href="#i-clock"/></svg>When to leave</h3>
+                <p class="block-note" id="optNote"></p>
+              </div>
+              <div class="opt" id="opt">
+                <div class="opt-bars" id="optBars" role="listbox" aria-label="Road score by departure hour" tabindex="0"></div>
+                <div class="opt-axis" id="optAxis" aria-hidden="true"></div>
+              </div>
+              <div class="opt-foot">
+                <div class="opt-legend" aria-hidden="true">
+                  <span><i class="lg lg-good"></i>Great</span><span><i class="lg lg-fair"></i>Fair</span><span><i class="lg lg-mixed"></i>Mixed</span><span><i class="lg lg-rough"></i>Rough</span>
+                </div>
+                <button type="button" class="btn-best" id="bestBtn" hidden><svg class="ico"><use href="#i-star"/></svg><span id="bestLabel"></span></button>
+              </div>
+            </section>
+
+            <section class="block" aria-labelledby="packTitle">
+              <div class="block-head"><h3 id="packTitle" class="block-title"><svg class="ico"><use href="#i-check"/></svg>Heads-up &amp; packing</h3></div>
+              <ul class="advice" id="advice"></ul>
+            </section>
+
+            <section class="block" aria-labelledby="tlTitle">
+              <div class="block-head">
+                <h3 id="tlTitle" class="block-title"><svg class="ico"><use href="#i-route"/></svg>Along the way</h3>
+                <p class="block-note">Tap a stop to find it on the map</p>
+              </div>
+              <ol class="timeline" id="timeline"></ol>
+            </section>
+
+            <p class="fine">Forecasts from Open-Meteo, routing by OSRM, places from OpenStreetMap via Photon. Drive times exclude stops and traffic — always check local road conditions before you go.</p>
+          </div>
+        </div>
+
+        <div class="map-wrap">
+          <div id="map" role="region" aria-label="Route map"></div>
+          <div class="map-legend" aria-hidden="true">
+            <span><i style="background:var(--w-clear)"></i>Clear</span>
+            <span><i style="background:var(--w-cloud)"></i>Cloudy</span>
+            <span><i style="background:var(--w-fog)"></i>Fog</span>
+            <span><i style="background:var(--w-rain)"></i>Rain</span>
+            <span><i style="background:var(--w-snow)"></i>Snow/ice</span>
+            <span><i style="background:var(--w-storm)"></i>Storm</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= How it works ================= -->
+    <section class="section how" id="how" aria-labelledby="howTitle">
+      <div class="section-head reveal">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>How it works</p>
+        <h2 id="howTitle" class="section-title">Weather moves. So do you.<br><span class="muted">We line the two up.</span></h2>
+      </div>
+      <ol class="steps">
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true"><!-- art:step1 --><svg class="iso" viewBox="-6 -79 179 136"><polygon class="f-left" points="0.0,0.0 72.1,41.6 72.1,50.7 0.0,9.1"/><polygon class="f-right" points="72.1,41.6 166.6,-13.0 166.6,-3.9 72.1,50.7"/><polygon class="f-ground" points="0.0,0.0 94.6,-54.6 166.6,-13.0 72.1,41.6"/><polygon class="f-road" points="28.1,16.2 122.7,-38.4 138.5,-29.2 43.9,25.3"/><line class="pen" x1="28.1" y1="16.2" x2="122.7" y2="-38.4"/><line class="pen" x1="43.9" y1="25.3" x2="138.5" y2="-29.2"/><line class="pen road-dash sa-draw" x1="36.0" y1="20.8" x2="130.6" y2="-33.8"/><ellipse class="f-shadow" cx="52.8" cy="-13.0" rx="7.1" ry="2.6"/><line class="pen" x1="49.5" y1="-13.0" x2="49.5" y2="-17.5"/><polygon class="f-top" points="43.1,-16.9 49.5,-30.4 56.0,-16.9"/><polygon class="f-right" points="49.5,-15.9 49.5,-30.4 56.0,-16.9"/><polygon class="f-top" points="44.4,-22.7 49.5,-35.5 54.7,-22.7"/><polygon class="f-right" points="49.5,-21.7 49.5,-35.5 54.7,-22.7"/><ellipse class="f-shadow" cx="69.2" cy="-24.7" rx="8.7" ry="3.1"/><line class="pen" x1="65.3" y1="-24.7" x2="65.3" y2="-30.2"/><polygon class="f-top" points="57.4,-29.4 65.3,-45.9 73.2,-29.4"/><polygon class="f-right" points="65.3,-28.4 65.3,-45.9 73.2,-29.4"/><polygon class="f-top" points="59.0,-36.5 65.3,-52.2 71.6,-36.5"/><polygon class="f-right" points="65.3,-35.5 65.3,-52.2 71.6,-36.5"/><ellipse class="f-shadow" cx="125.1" cy="0.0" rx="7.0" ry="2.6"/><line class="pen" x1="121.6" y1="0.0" x2="121.6" y2="-12.3"/><circle class="f-top" cx="121.6" cy="-12.3" r="7.3"/><path class="f-right" d="M121.6 -19.5A7.3 7.3 0 0 1 121.6 -5.0A3.3 7.3 0 0 0 121.6 -19.5Z"/><ellipse class="f-shadow" cx="48.4" cy="13.7" rx="7" ry="3"/><path class="pin-a" d="M48.4 10.7C44.4 -0.3 36.4 -6.4 36.4 -18.4a12 12 0 0 1 24 0c0 12-8 21-12 29.0Z"/><text class="pin-t" x="48.4" y="-14.4" text-anchor="middle">A</text><ellipse class="f-shadow" cx="119.3" cy="-27.3" rx="7" ry="3"/><path class="pin-b" d="M119.3 -30.3C115.3 -41.3 107.3 -47.3 107.3 -59.3a12 12 0 0 1 24 0c0 12-8 21-12 29.0Z"/><text class="pin-t" x="119.3" y="-55.3" text-anchor="middle">B</text></svg><!-- /art:step1 --></div>
+          <span class="step-n">01</span>
+          <h3>Route it</h3>
+          <p>Pick a start, a destination and when you're leaving. We find the fastest driving route and pin a checkpoint every few dozen miles.</p>
+        </li>
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true"><!-- art:step2 --><svg class="iso" viewBox="-6 -97 179 154"><polygon class="f-left" points="0.0,0.0 72.1,41.6 72.1,50.7 0.0,9.1"/><polygon class="f-right" points="72.1,41.6 166.6,-13.0 166.6,-3.9 72.1,50.7"/><polygon class="f-ground" points="0.0,0.0 94.6,-54.6 166.6,-13.0 72.1,41.6"/><polygon class="f-road" points="28.1,16.2 122.7,-38.4 138.5,-29.2 43.9,25.3"/><line class="pen" x1="28.1" y1="16.2" x2="122.7" y2="-38.4"/><line class="pen" x1="43.9" y1="25.3" x2="138.5" y2="-29.2"/><ellipse class="f-shadow" cx="22.4" cy="2.0" rx="7.1" ry="2.6"/><line class="pen" x1="19.1" y1="2.0" x2="19.1" y2="-2.6"/><polygon class="f-top" points="12.7,-1.9 19.1,-15.4 25.6,-1.9"/><polygon class="f-right" points="19.1,-0.9 19.1,-15.4 25.6,-1.9"/><polygon class="f-top" points="14.0,-7.7 19.1,-20.6 24.3,-7.7"/><polygon class="f-right" points="19.1,-6.7 19.1,-20.6 24.3,-7.7"/><ellipse class="f-shadow" cx="104.9" cy="-44.2" rx="7.9" ry="2.9"/><line class="pen" x1="101.3" y1="-44.2" x2="101.3" y2="-49.2"/><polygon class="f-top" points="94.2,-48.5 101.3,-63.5 108.5,-48.5"/><polygon class="f-right" points="101.3,-47.5 101.3,-63.5 108.5,-48.5"/><polygon class="f-top" points="95.6,-54.9 101.3,-69.2 107.0,-54.9"/><polygon class="f-right" points="101.3,-53.9 101.3,-69.2 107.0,-54.9"/><g class="sa-post" style="--k:0"><line class="pen" x1="54.0" y1="10.4" x2="54.0" y2="-39.0"/><rect class="sa-tag" x="34.0" y="-55.0" width="40" height="16" rx="8"/><text class="sa-t" x="54.0" y="-43.8" text-anchor="middle">9:00</text></g><g class="sa-post" style="--k:1"><line class="pen" x1="83.3" y1="-6.5" x2="83.3" y2="-65.0"/><rect class="sa-tag" x="63.3" y="-81.0" width="40" height="16" rx="8"/><text class="sa-t" x="83.3" y="-69.8" text-anchor="middle">10:40</text></g><g class="sa-post" style="--k:2"><line class="pen" x1="112.6" y1="-23.4" x2="112.6" y2="-91.0"/><rect class="sa-tag" x="92.6" y="-107.0" width="40" height="16" rx="8"/><text class="sa-t" x="112.6" y="-95.8" text-anchor="middle">12:15</text></g></svg><!-- /art:step2 --></div>
+          <span class="step-n">02</span>
+          <h3>Time it</h3>
+          <p>For every checkpoint we work out when you'll actually get there — then pull that place's forecast for that exact hour.</p>
+        </li>
+        <li class="step reveal">
+          <div class="step-art" aria-hidden="true"><!-- art:step3 --><svg class="iso" viewBox="-6 -100 174 149"><polygon class="f-left" points="0.0,0.0 58.5,33.8 58.5,42.9 0.0,9.1"/><polygon class="f-right" points="58.5,33.8 162.1,-26.0 162.1,-16.9 58.5,42.9"/><polygon class="f-ground" points="0.0,0.0 103.6,-59.8 162.1,-26.0 58.5,33.8"/><g class="sa-bar" style="--k:5"><polygon class="f-left" points="107.0,-38.4 120.5,-30.6 120.5,-46.1 107.0,-54.0"/><polygon class="f-right" points="120.5,-30.6 130.6,-36.4 130.6,-52.0 120.5,-46.1"/><polygon class="f-top" points="107.0,-54.0 117.1,-59.8 130.6,-52.0 120.5,-46.1"/></g><g class="sa-bar" style="--k:4"><polygon class="f-left" points="91.2,-29.2 104.7,-21.4 104.7,-44.9 91.2,-52.7"/><polygon class="f-right" points="104.7,-21.4 114.8,-27.3 114.8,-50.7 104.7,-44.9"/><polygon class="f-top" points="91.2,-52.7 101.3,-58.5 114.8,-50.7 104.7,-44.9"/></g><g class="sa-bar" style="--k:3"><polygon class="f-left" points="75.4,-20.1 88.9,-12.3 88.9,-56.5 75.4,-64.3"/><polygon class="f-right" points="88.9,-12.3 99.1,-18.2 99.1,-62.4 88.9,-56.5"/><polygon class="f-top" points="75.4,-64.3 85.6,-70.2 99.1,-62.4 88.9,-56.5"/></g><g class="sa-bar" style="--k:2"><polygon class="bar-left" points="59.7,-11.0 73.2,-3.2 73.2,-65.7 59.7,-73.5"/><polygon class="bar-right" points="73.2,-3.2 83.3,-9.1 83.3,-71.5 73.2,-65.7"/><polygon class="bar-top" points="59.7,-73.5 69.8,-79.3 83.3,-71.5 73.2,-65.7"/></g><g class="sa-bar" style="--k:1"><polygon class="f-left" points="43.9,-1.9 57.4,5.9 57.4,-35.8 43.9,-43.5"/><polygon class="f-right" points="57.4,5.9 67.5,0.0 67.5,-41.6 57.4,-35.8"/><polygon class="f-top" points="43.9,-43.5 54.0,-49.4 67.5,-41.6 57.4,-35.8"/></g><g class="sa-bar" style="--k:0"><polygon class="f-left" points="28.1,7.2 41.7,14.9 41.7,-13.7 28.1,-21.5"/><polygon class="f-right" points="41.7,14.9 51.8,9.1 51.8,-19.5 41.7,-13.7"/><polygon class="f-top" points="28.1,-21.5 38.3,-27.3 51.8,-19.5 41.7,-13.7"/></g><path class="star" d="M71.4 -92.4l3 6 6.5 1-4.7 4.6 1.1 6.4-5.9-3.1-5.9 3.1 1.1-6.4-4.7-4.6 6.5-1Z"/></svg><!-- /art:step3 --></div>
+          <span class="step-n">03</span>
+          <h3>Score it</h3>
+          <p>Rain, snow, ice, fog and gusts roll up into a single road score — for now, and for every hour you could leave over the next three days.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================= Features ================= -->
+    <section class="section features" id="features" aria-labelledby="featTitle">
+      <div class="section-head reveal">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Features</p>
+        <h2 id="featTitle" class="section-title">Built for the drive,<br><span class="muted">not the destination.</span></h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature reveal">
+          <div class="f-icon f-clear" data-wx="clear"></div>
+          <h3>Arrival-time forecasts</h3>
+          <p>Not "today in Sacramento" — the sky over Sacramento at 10:42 AM, when you're there.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="storm"></div>
+          <h3>Best time to leave</h3>
+          <p>A 72-hour scan shows whether waiting two hours dodges the storm. Tap any hour to re-plan instantly.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="snow"></div>
+          <h3>Ice &amp; snow alerts</h3>
+          <p>Freezing temps plus moisture get flagged loudly — the stuff that turns a pass into a parking lot.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="partly"></div>
+          <h3>Pack-list nudges</h3>
+          <p>A 25° swing between start and finish? You'll know to throw a jacket in the back seat.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="fog"></div>
+          <h3>Share a link</h3>
+          <p>Every plan has a link. Send it to whoever's riding shotgun.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="f-icon" data-wx="rain"></div>
+          <h3>No keys, no sign-up</h3>
+          <p>Open data from Open-Meteo, OSRM and OpenStreetMap. Works on your phone at the gas station.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= Story ================= -->
+    <section class="section story" id="story" aria-labelledby="storyTitle">
+      <div class="story-card reveal">
+        <div class="story-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>The story</p>
+          <h2 id="storyTitle" class="section-title">Made for explorers,<br><span class="muted">by explorers.</span></h2>
+          <p>Weather to Travel started as a bootcamp project by four friends who kept getting caught in the rain halfway to somewhere sunny. This is the rebuild: same idea, sharper tools.</p>
+        </div>
+        <ul class="team" aria-label="Original team">
+          <li><span class="avatar" aria-hidden="true">H</span><a href="https://github.com/HebahM" rel="noopener">Hebah</a></li>
+          <li><span class="avatar" aria-hidden="true">J</span><a href="https://github.com/jenniferchan2267" rel="noopener">Jennifer</a></li>
+          <li><span class="avatar" aria-hidden="true">M</span><a href="https://github.com/mykolyn" rel="noopener">Michael</a></li>
+          <li><span class="avatar" aria-hidden="true">T</span><a href="https://github.com/tsully1990" rel="noopener">Tyler</a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <a class="brand" href="#top" aria-label="Back to top">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="26" cy="14" r="8" class="bm-sun"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-road"/><path d="M2 36c8-1 12-6 18-11s10-6 18-6" class="bm-dash"/></svg>
+        <span class="brand-word">Weather<span class="brand-to">to</span>Travel</span>
+      </a>
+      <p class="footer-data">Weather <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> · Routing <a href="https://project-osrm.org/" rel="noopener">OSRM</a> · Places <a href="https://photon.komoot.io/" rel="noopener">Photon</a> · Maps <a href="https://openfreemap.org/" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a></p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin=""></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
