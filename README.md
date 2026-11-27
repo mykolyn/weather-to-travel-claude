@@ -41,7 +41,7 @@ python3 -m http.server 8080
 # open http://localhost:8080
 ```
 
-To deploy, enable **GitHub Pages** in the repo settings (source: branch root). The `.nojekyll` file is already in place.
+**Deploy:** `.github/workflows/pages.yml` publishes the site to GitHub Pages on every push to `main` (or run it by hand from the Actions tab). One-time setup: **Settings → Pages → Source: GitHub Actions**. Live at https://mykolyn.github.io/weather-to-travel-claude/
 
 ## Structure
 
