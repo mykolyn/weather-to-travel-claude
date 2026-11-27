@@ -9,6 +9,9 @@ A ground-up rebuild of the original [Weather-to-travel](https://github.com/mykol
 - **Arrival-time forecasts.** The route is split into up to 15 checkpoints. Each one is matched to the hourly forecast for the moment you'll pass through it.
 - **Road score (0–100).** Rain, snow, ice (freezing temps plus moisture), thunderstorms, fog and visibility, and wind gusts are combined into one score with a plain-language verdict.
 - **When to leave.** A 72-hour bar chart scores every possible departure hour. Tap a bar, or use the arrow keys, to re-plan instantly. No new network calls are needed.
+- **Compare routes.** When there's a real alternative (e.g. I-80 vs US-50 to Tahoe), each route gets its own forecast and road score. Route cards are tagged "Fastest" and "Best weather", and alternatives appear as dashed lines you can click on the map.
+- **Rest stops.** Choose no breaks, 15 min every 2 h, or 30 min every 3 h. Arrival times, the score and the "when to leave" chart all shift accordingly, and the breaks appear in the timeline.
+- **Official alerts.** Active US National Weather Service alerts (winter storm, dense fog, high wind, flood…) are checked at every checkpoint. An alert counts only if it's in effect when you pass through. It's factored into the score and shown as a heads-up.
 - **Heads-up and packing.** Ice risk, storms, crosswinds, big temperature swings, night driving, "bring a jacket", and so on.
 - **Live map.** The route is coloured by the weather along each stretch, with temperature pins and popups. The map is linked to the timeline in both directions.
 - **Shareable links.** Every plan is encoded in the URL.
@@ -19,8 +22,9 @@ A ground-up rebuild of the original [Weather-to-travel](https://github.com/mykol
 | Purpose | Service |
 | --- | --- |
 | Place search & town names | [Photon](https://photon.komoot.io/) (OpenStreetMap), with [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) as a fallback |
-| Driving route + per-segment travel time | [OSRM](https://project-osrm.org/) public server |
+| Driving routes, alternatives, per-segment travel time | [OSRM](https://project-osrm.org/) public server |
 | Hourly forecast (8 days, many points in one request) | [Open-Meteo](https://open-meteo.com/) |
+| Official weather alerts (US) | [National Weather Service API](https://www.weather.gov/documentation/services-web-api) |
 | Basemap | [OpenFreeMap](https://openfreemap.org/) vector tiles via [MapLibre GL JS](https://maplibre.org/) |
 
 The original app hard-coded Google and OpenWeather keys and relied on the now-defunct `cors-anywhere` proxy. This version has no secrets and no backend.

@@ -124,13 +124,46 @@ export function hazard(c) {
   return { h, why: factors[0][0] >= 0.15 ? factors[0][1] : null };
 }
 
+// ---------- Official alerts ----------
+const ROAD_EVENT = /winter|blizzard|ice|snow|freez|wind|storm|flood|fog|tornado|hurricane|tropical|dust|thunder|avalanche|squall|whiteout|heat/i;
+const SEVERITY = { Extreme: 0.92, Severe: 0.75, Moderate: 0.5, Minor: 0.25 };
+
+/** Alerts in force at a stop when you pass it, plus the hazard they add. */
+export function alertsAt(alerts, eta) {
+  const live = (alerts || []).filter(a => eta >= a.start - 1800 && eta <= a.end);
+  let h = 0, why = null;
+  for (const a of live) {
+    const v = ROAD_EVENT.test(a.event) ? (SEVERITY[a.severity] ?? 0.4) : 0.15;
+    if (v > h) { h = v; why = a.event.toLowerCase(); }
+  }
+  return { live, h, why };
+}
+
+// ---------- Rest stops ----------
+export const BREAKS = {
+  off: { every: 0, len: 0, label: 'No breaks' },
+  short: { every: 2 * 3600, len: 15 * 60, label: '15 min every 2 h' },
+  long: { every: 3 * 3600, len: 30 * 60, label: '30 min every 3 h' },
+};
+const breaksBefore = (t, cfg) => (cfg.every && t > 0 ? Math.floor((t - 1) / cfg.every) : 0);
+
+/** Shift checkpoint times for rest stops; returns adjusted points, total time and break list. */
+export function withBreaks(points, driveDuration, cfg = BREAKS.off) {
+  const pts = points.map(p => ({ ...p, drive: p.t, t: p.t + breaksBefore(p.t, cfg) * cfg.len }));
+  const n = breaksBefore(driveDuration, cfg);
+  const stops = Array.from({ length: n }, (_, i) => ({ at: (i + 1) * cfg.every + i * cfg.len, drive: (i + 1) * cfg.every, len: cfg.len }));
+  return { points: pts, duration: driveDuration + n * cfg.len, breaks: stops };
+}
+
 /** Evaluate the whole trip for a departure time (unix seconds). */
-export function evaluate(points, forecasts, depart) {
+export function evaluate(points, forecasts, depart, alerts = []) {
   const stops = points.map((p, k) => {
     const eta = depart + p.t;
     const c = conditionAt(forecasts[k], eta);
     const hz = hazard(c);
-    return { ...p, eta, c, ...hz };
+    const al = alertsAt(alerts[k], eta);
+    const h = Math.max(hz.h, al.h);
+    return { ...p, eta, c, h, why: al.h > hz.h ? al.why : hz.why, alerts: al.live };
   });
   const known = stops.filter(s => s.c);
   if (!known.length) return { stops, score: null, coverage: 0 };
@@ -151,13 +184,13 @@ export function band(score) {
 }
 
 /** Scores for each whole-hour departure from `start` for `hours` hours. */
-export function scan(points, forecasts, start, hours, duration) {
+export function scan(points, forecasts, start, hours, duration, alerts = []) {
   const end = forecasts[0].time[forecasts[0].time.length - 1];
   const out = [];
   for (let k = 0; k < hours; k++) {
     const dep = start + k * 3600;
     if (dep + duration > end) break;
-    out.push({ dep, score: evaluate(points, forecasts, dep).score });
+    out.push({ dep, score: evaluate(points, forecasts, dep, alerts).score });
   }
   return out;
 }
