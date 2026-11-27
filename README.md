@@ -42,15 +42,16 @@ The original app hard-coded Google and OpenWeather keys and relied on the now-de
 ## Reliability
 
 - Routing falls back from the public OSRM server to the FOSSGIS mirror (`routing.openstreetmap.de`). Place search falls back from Photon to Open-Meteo geocoding.
-- `sw.js` caches the app shell and, network-first, the latest API answers and map tiles.
+- Requests have time limits. A slow or failed service always ends in a clear message with **Try again**, never an endless spinner. A 45-second safety net backs this up.
+- The page keeps the last good answer for each request, so trips you've opened work offline. `sw.js` caches the app's files and map tiles but deliberately doesn't relay live API calls (on iOS Safari that could leave requests hanging).
 
 ## Tests
 
-End-to-end and accessibility tests use Playwright and axe. They replay recorded API responses (`tests/fixtures/api.har`) with the clock pinned to the moment of recording, so they're fast, deterministic and don't depend on the free services being up.
+End-to-end and accessibility tests use Playwright and axe, in desktop Chrome, a phone-sized Chrome and Safari's engine (WebKit, iPhone profile). They replay recorded API responses (`tests/fixtures/api.har`) with the clock pinned to the moment of recording, so they're fast, deterministic and don't depend on the free services being up.
 
 ```bash
 npm install
-npx playwright install chromium   # first time only
+npx playwright install chromium webkit   # first time only
 npm test
 ```
 

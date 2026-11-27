@@ -8,21 +8,49 @@ const METEO_GEO = 'https://geocoding-api.open-meteo.com/v1/search';
 
 export const FORECAST_DAYS = 8;
 
-/** fetch JSON; on a "busy" answer (429/502/503/504) wait a moment and try once more. */
+// ---------- Saved answers (so trips you've opened still work offline) ----------
+// Kept by the page itself rather than the service worker: on iOS Safari, routing live API
+// requests through a service worker could leave them hanging.
+const DATA_CACHE = 'wtt-data-v1';
+async function saveAnswer(url, data) {
+  try { await (await caches.open(DATA_CACHE)).put(url, new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } })); } catch { /* storage unavailable */ }
+}
+async function savedAnswer(url) {
+  try { const hit = await (await caches.open(DATA_CACHE)).match(url); return hit ? await hit.json() : null; } catch { return null; }
+}
+
+/**
+ * fetch JSON with a timeout. A "busy" answer (429/502/503/504) is retried once after a pause.
+ * Errors: AbortError only when the caller cancelled; TimeoutError when the server was too slow.
+ * With { save: true }, good answers are kept and served back if the network fails.
+ */
 async function getJSON(url, opts = {}) {
   try {
-    return await getJSONOnce(url, opts);
+    let data;
+    try {
+      data = await getJSONOnce(url, opts);
+    } catch (err) {
+      if (![429, 502, 503, 504].includes(err.status) || opts.signal?.aborted) throw err;
+      await new Promise(r => setTimeout(r, 1500));
+      data = await getJSONOnce(url, opts);
+    }
+    if (opts.save && !data?.error) saveAnswer(url, data);
+    return data;
   } catch (err) {
-    if (![429, 502, 503, 504].includes(err.status) || opts.signal?.aborted) throw err;
-    await new Promise(r => setTimeout(r, 1500));
-    return getJSONOnce(url, opts);
+    if (opts.save && !opts.signal?.aborted && (err.name === 'TypeError' || err.name === 'TimeoutError' || !navigator.onLine)) {
+      const saved = await savedAnswer(url);
+      if (saved) return saved;
+    }
+    throw err;
   }
 }
 
 async function getJSONOnce(url, { signal, timeout = 15000 } = {}) {
+  if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new DOMException('Request timed out', 'TimeoutError')), timeout);
-  const onAbort = () => ctrl.abort(signal.reason);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeout);
+  const onAbort = () => ctrl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const res = await fetch(url, { signal: ctrl.signal });
@@ -31,6 +59,11 @@ async function getJSONOnce(url, { signal, timeout = 15000 } = {}) {
       throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, body });
     }
     return await res.json();
+  } catch (err) {
+    // Safari reports our own timeout as a plain AbortError; tell the two apart explicitly.
+    if (timedOut) throw Object.assign(new Error('Request timed out'), { name: 'TimeoutError' });
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    throw err;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
@@ -90,7 +123,7 @@ export async function searchPlaces(q, { signal, near } = {}) {
 export async function reversePlace(lat, lon, { signal } = {}) {
   const lookup = async radius => {
     const params = new URLSearchParams({ lat: lat.toFixed(4), lon: lon.toFixed(4), limit: '1', lang: 'en', layer: 'city', radius: String(radius) });
-    const data = await getJSON(`${PHOTON}/reverse?${params}`, { signal, timeout: 8000 });
+    const data = await getJSON(`${PHOTON}/reverse?${params}`, { signal, timeout: 8000, save: true });
     const p = data.features?.[0]?.properties;
     return p?.name ? { name: p.name, detail: region(p) } : null;
   };
@@ -153,7 +186,7 @@ export async function getRoutes(a, b, { signal } = {}) {
   let data;
   for (const base of ROUTERS) {
     try {
-      data = await getJSON(base + query, { signal, timeout: 15000 });
+      data = await getJSON(base + query, { signal, timeout: 15000, save: true });
       break;
     } catch (err) {
       if (signal?.aborted) throw err;
@@ -183,7 +216,7 @@ const NWS = 'https://api.weather.gov/alerts/active';
 export async function getAlerts(lat, lon, { signal } = {}) {
   if (lon > -60 || lon < -180 || lat < 17 || lat > 72) return [];
   try {
-    const data = await getJSON(`${NWS}?point=${lat.toFixed(3)},${lon.toFixed(3)}`, { signal, timeout: 8000 });
+    const data = await getJSON(`${NWS}?point=${lat.toFixed(3)},${lon.toFixed(3)}`, { signal, timeout: 8000, save: true });
     return (data.features || []).map(f => {
       const p = f.properties;
       return {
@@ -220,12 +253,21 @@ export async function getForecasts(points, { signal } = {}) {
   });
   let data;
   try {
-    data = await getJSON(`${METEO}?${params}`, { signal, timeout: 20000 });
+    data = await getJSON(`${METEO}?${params}`, { signal, timeout: 30000, save: true });
   } catch (err) {
     if (err.name === 'AbortError') throw err;
-    throw new Error(err.status === 429
+    const reason = err.body?.reason || '';
+    throw new Error(err.status === 429 || /limit/i.test(reason)
       ? 'The free forecast service is busy right now. Please try again in a minute.'
-      : 'The forecast service didn\'t answer. Please try again in a moment.');
+      : err.name === 'TimeoutError'
+        ? 'The forecast service is taking too long to answer. Please try again.'
+        : 'The forecast service didn\'t answer. Please try again in a moment.');
+  }
+  // Open-Meteo sometimes reports problems (e.g. quota) as a 200 with { error: true, reason }.
+  if (!data || data.error) {
+    throw new Error(/limit/i.test(data?.reason || '')
+      ? 'The free forecast service has hit its usage limit for now. Please try again later.'
+      : 'The forecast service sent back an unexpected answer. Please try again.');
   }
   const list = Array.isArray(data) ? data : [data];
   return list.map(d => {

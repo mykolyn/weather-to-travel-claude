@@ -479,6 +479,8 @@ img, svg { display: block; }
 .error-card > .ico { color: var(--b-rough); width: 28px; height: 28px; }
 .error-card h3 { font: 700 20px/1.2 var(--font-display); margin-bottom: 6px; }
 .error-card p { color: var(--ink-2); margin-bottom: 14px; }
+.error-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-primary { background: var(--ink) !important; color: var(--paper) !important; border-color: var(--ink) !important; }
 .btn-ghost {
   display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line-2); background: var(--surface);
   border-radius: 12px; padding: 9px 14px; font-weight: 600;
