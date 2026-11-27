@@ -185,8 +185,6 @@ def hero():
     ground.append(iso.line((0, (RY0 + RY1) / 2, 0), (W, (RY0 + RY1) / 2, 0), "pen road-dash"))
 
     # Cloud shadows on the ground
-    ground.append(iso.poly([(5.0, 2.3, 0), (7.3, 2.3, 0), (7.3, 3.4, 0), (5.0, 3.4, 0)], "f-cloudshadow"))
-    ground.append(iso.poly([(9.0, 4.7, 0), (11.6, 4.7, 0), (11.6, 6.0, 0), (9.0, 6.0, 0)], "f-cloudshadow"))
 
     # Grass ticks, avoiding things
     keep_out = [(0.4, 1.4, 3.2, 3.0), (2.0, 0.4, 3.2, 1.7), (8.0, 0.0, 12, 3.4), (4.2, 5.4, 7.8, 7.8),
@@ -243,35 +241,105 @@ def hero():
              f'<animate attributeName="opacity" dur="14s" repeatCount="indefinite" values="0;1;1;0" keyTimes="0;.05;.93;1"/>'
              f'{car_svg}</g></g>')
 
-    # ---- sky: sun, birds, voxel clouds, rain ----
-    SX, SY = iso.p(3.2, -.6, 5.3)
-    rays = "".join(
-        f'<line x1="{SX + math.cos(a) * 44:.1f}" y1="{SY + math.sin(a) * 44:.1f}" x2="{SX + math.cos(a) * 58:.1f}" y2="{SY + math.sin(a) * 58:.1f}"/>'
-        for a in (i * math.pi / 6 for i in range(12)))
-    iso.xs += [SX - 60, SX + 60]
-    iso.ys += [SY - 60]
-    sky.append(f'<g class="sun"><g class="sun-rays pen" style="transform-origin:{SX:.1f}px {SY:.1f}px">{rays}</g>'
-               f'<circle class="sun-core" cx="{SX:.1f}" cy="{SY:.1f}" r="34"/>'
-               f'<path class="sun-shade" d="M{SX + 12:.1f} {SY - 32:.1f}A34 34 0 0 1 {SX + 12:.1f} {SY + 32:.1f}A30 34 0 0 0 {SX + 12:.1f} {SY - 32:.1f}Z"/></g>')
-    BX, BY = iso.p(5.2, -.2, 5.9)
-    sky.append(f'<g class="birds pen"><path d="M{BX:.1f} {BY:.1f}q6-6 12 0q6-6 12 0"/>'
-               f'<path d="M{BX + 34:.1f} {BY + 14:.1f}q4-4 8 0q4-4 8 0"/></g>')
-
+    # ---- sky: three weather zones (start / middle / end of the drive) ----
+    # Every zone has a drawing for each kind of weather; the app switches them to match the real
+    # forecast for that third of the trip. The defaults tell the product story: sun, cloud, rain.
     def voxel_cloud(blocks, cls, drift):
         parts = []
         for b in sorted(blocks, key=lambda b: (b[2], b[1] - b[0])):
             parts.append(iso.box(*b, top="f-cloud", left="f-cloud", right=cls))
         return f'<g class="cloud {drift}">{"".join(parts)}</g>'
 
-    sky.append(voxel_cloud([(5.0, 2.3, 3.5, 7.3, 3.4, 3.95), (5.5, 2.5, 3.95, 6.7, 3.2, 4.4)], "f-right", "drift-a"))
-    # rain under cloud 2
-    rain = []
-    for k in range(16):
-        x, y = rng.uniform(9.2, 11.4), rng.uniform(4.8, 5.9)
-        a, b = iso.p(x, y, 4.1), iso.p(x, y, .25)
-        rain.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" style="animation-delay:-{rng.uniform(0, 1):.2f}s"/>')
-    sky.append(f'<g class="rain">{"".join(rain)}</g>')
-    sky.append(voxel_cloud([(9.0, 4.7, 4.1, 11.6, 6.0, 4.6), (9.5, 4.9, 4.6, 11.0, 5.8, 5.15), (9.9, 4.2, 4.3, 10.8, 4.9, 4.8)], "f-right-dark", "drift-b"))
+    def cloud_blocks(fp, z):
+        x0, y0, x1, y1 = fp
+        return [(x0, y0, z, x1, y1, z + .45),
+                (x0 + .5, y0 + .2, z + .45, x1 - .6, y1 - .2, z + .9),
+                (x0 + .9, y0 - .5, z + .2, x1 - 1.1, y0 + .3, z + .65)]
+
+    def sun_svg(X, Y, r):
+        rays = "".join(
+            f'<line x1="{X + math.cos(a) * (r + 10):.1f}" y1="{Y + math.sin(a) * (r + 10):.1f}" x2="{X + math.cos(a) * (r + 24):.1f}" y2="{Y + math.sin(a) * (r + 24):.1f}"/>'
+            for a in (i * math.pi / 6 for i in range(12)))
+        iso.xs += [X - r - 26, X + r + 26]
+        iso.ys += [Y - r - 26]
+        return (f'<g class="sun"><g class="sun-rays pen" style="transform-origin:{X:.1f}px {Y:.1f}px">{rays}</g>'
+                f'<circle class="sun-core" cx="{X:.1f}" cy="{Y:.1f}" r="{r}"/>'
+                f'<path class="sun-shade" d="M{X + r * .35:.1f} {Y - r * .94:.1f}A{r} {r} 0 0 1 {X + r * .35:.1f} {Y + r * .94:.1f}A{r * .88:.1f} {r} 0 0 0 {X + r * .35:.1f} {Y - r * .94:.1f}Z"/></g>')
+
+    def moon_svg(X, Y, r):
+        stars = "".join(
+            f'<path class="star-pen" d="M{X + dx:.1f} {Y + dy - 5:.1f}v10M{X + dx - 5:.1f} {Y + dy:.1f}h10"/>'
+            for dx, dy in ((-r - 34, -10), (r + 30, -r - 6), (r + 46, r - 2), (-r - 12, r + 22)))
+        return (f'<g class="moon">{stars}'
+                f'<path class="moon-core" d="M{X + r * .45:.1f} {Y - r * .9:.1f}A{r} {r} 0 1 0 {X + r * .45:.1f} {Y + r * .9:.1f}A{r * .8:.1f} {r * .8:.1f} 0 1 1 {X + r * .45:.1f} {Y - r * .9:.1f}Z"/></g>')
+
+    def rain_lines(fp, z, n=16):
+        x0, y0, x1, y1 = fp
+        out = []
+        for _ in range(n):
+            x, y = rng.uniform(x0 + .2, x1 - .2), rng.uniform(y0 + .1, y1 - .1)
+            a, b = iso.p(x, y, z), iso.p(x, y, .25)
+            out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" style="animation-delay:-{rng.uniform(0, 1):.2f}s"/>')
+        return f'<g class="rain">{"".join(out)}</g>'
+
+    def snow_flakes(fp, z, n=14):
+        x0, y0, x1, y1 = fp
+        out = []
+        for _ in range(n):
+            x, y, zz = rng.uniform(x0 + .2, x1 - .2), rng.uniform(y0 + .1, y1 - .1), rng.uniform(.6, z - .3)
+            X, Y = iso.p(x, y, zz)
+            out.append(f'<path class="flake" style="animation-delay:-{rng.uniform(0, 3):.2f}s" d="M{X:.1f} {Y - 4:.1f}v8M{X - 3.5:.1f} {Y - 2:.1f}l7 4M{X - 3.5:.1f} {Y + 2:.1f}l7-4"/>')
+        return f'<g class="snow">{"".join(out)}</g>'
+
+    def bolt(fp, z):
+        cx, cy = (fp[0] + fp[2]) / 2, (fp[1] + fp[3]) / 2
+        X, Y = iso.p(cx, cy, z)
+        _, G = iso.p(cx, cy, .6)
+        h = G - Y
+        pts = [(X, Y), (X - 10, Y + h * .45), (X + 3, Y + h * .45), (X - 8, Y + h), (X + 14, Y + h * .38), (X + 1, Y + h * .38), (X + 9, Y)]
+        return f'<polygon class="bolt" points="{" ".join(f"{a:.1f},{b:.1f}" for a, b in pts)}"/>'
+
+    def fog_bands(fp):
+        x0, y0, x1, y1 = fp
+        x0, x1, y0, y1 = max(.05, x0 - .6), min(W - .05, x1 + .6), max(.05, y0 - 1.2), min(D - .05, y1 + 1.6)
+        out = []
+        for k, z in enumerate((.35, .8, 1.25)):
+            out.append(iso.poly([(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)], "f-fog"))
+            a, b = iso.p(x0 + .3, (y0 + y1) / 2 + k * .3, z), iso.p(x1 - .3, (y0 + y1) / 2 + k * .3, z)
+            out.append(f'<line class="pen thin fog-line" style="animation-delay:-{k * 1.3:.1f}s" x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}"/>')
+        return "".join(out)
+
+    def shadow(fp, dense=False):
+        x0, y0, x1, y1 = fp
+        return iso.poly([(x0, y0, 0), (x1, y0, 0), (x1, y1, 0), (x0, y1, 0)], "f-cloudshadow" + (" is-dense" if dense else ""))
+
+    ZONES = {
+        # name: (cloud footprint, cloud height, sun/moon position, default weather)
+        'a': ((.9, .9, 3.3, 2.1), 3.6, iso.p(3.2, -.6, 5.3), 'sun'),
+        'b': ((5.0, 2.3, 7.3, 3.4), 3.5, iso.p(6.6, .6, 5.9), 'cloud'),
+        'c': ((9.0, 4.7, 11.6, 6.0), 4.1, iso.p(11.2, 3.2, 6.3), 'rain'),
+    }
+    for zname, (fp, z, (SX, SY), default) in ZONES.items():
+        r = 34 if zname == 'a' else 28
+        drift = 'drift-a' if zname != 'c' else 'drift-b'
+        variants = {
+            'sun': ('', sun_svg(SX, SY, r)),
+            'moon': ('', moon_svg(SX, SY, r - 6)),
+            'cloud': (shadow(fp), voxel_cloud(cloud_blocks(fp, z), "f-right", drift)),
+            'rain': (shadow(fp, True), rain_lines(fp, z) + voxel_cloud(cloud_blocks(fp, z), "f-right-dark", drift)),
+            'snow': (shadow(fp), snow_flakes(fp, z) + voxel_cloud(cloud_blocks(fp, z), "f-right", drift)),
+            'storm': (shadow(fp, True), rain_lines(fp, z, 10) + bolt(fp, z) + voxel_cloud(cloud_blocks(fp, z), "f-right-dark", drift)),
+            'fog': ('', fog_bands(fp)),
+        }
+        for kind, (g_svg, s_svg) in variants.items():
+            on = ' on' if kind == default else ''
+            attrs = f'class="wx-v{on}" data-zone="{zname}" data-kind="{kind}"'
+            if g_svg:
+                ground.append(f'<g {attrs}>{g_svg}</g>')
+            sky.append(f'<g {attrs}>{s_svg}</g>')
+    BX, BY = iso.p(5.2, -.2, 5.9)
+    sky.append(f'<g class="birds pen"><path d="M{BX:.1f} {BY:.1f}q6-6 12 0q6-6 12 0"/>'
+               f'<path d="M{BX + 34:.1f} {BY + 14:.1f}q4-4 8 0q4-4 8 0"/></g>')
 
     # ---- forecast tags pinned to the road ----
     def tag(x, z, text, cls="", w=112):
@@ -281,7 +349,7 @@ def hero():
                 f'<circle class="tag-dot" cx="{a[0]:.1f}" cy="{a[1]:.1f}" r="3.5"/>'
                 f'<rect x="{b[0] - w/2:.1f}" y="{b[1] - 30:.1f}" width="{w}" height="30" rx="15"/>'
                 f'<text x="{b[0]:.1f}" y="{b[1] - 10:.1f}" text-anchor="middle">{text}</text></g>')
-    tags.append(tag(2.6, 2.6, "9:00 · 72°", "tag-1"))
+    tags.append(tag(2.2, 2.6, "9:00 · 72°", "tag-1"))
     tags.append(tag(5.7, 2.3, "10:40 · 61°", "tag-2", 120))
     tags.append(tag(8.3, 4.6, "12:15 · Rain", "tag-3 tag-warn", 124))
 
