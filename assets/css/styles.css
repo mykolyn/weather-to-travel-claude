@@ -127,18 +127,18 @@ img, svg { display: block; }
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; gap: 24px;
   padding: 14px var(--gutter);
-  background: color-mix(in srgb, var(--paper) 82%, transparent);
-  backdrop-filter: saturate(1.4) blur(14px);
-  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
   border-bottom: 1px solid transparent;
   transition: border-color .3s;
 }
 .topbar.scrolled { border-bottom-color: var(--line); }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand-mark { width: 34px; height: 34px; }
-.bm-sun { fill: var(--accent); transform-origin: 26px 14px; animation: bm-pulse 6s var(--ease) infinite; }
+.bm-sun { fill: var(--accent); transform-origin: 26px 14px; }
+.brand:hover .bm-sun { animation: bm-pulse 1.6s var(--ease) infinite; }
 .bm-road { fill: none; stroke: var(--ink); stroke-width: 6; stroke-linecap: round; }
-.bm-dash { fill: none; stroke: var(--paper); stroke-width: 1.6; stroke-dasharray: 3 4; stroke-linecap: round; animation: dash-run 2.4s linear infinite; }
+.bm-dash { fill: none; stroke: var(--paper); stroke-width: 1.6; stroke-dasharray: 3 4; stroke-linecap: round; }
+.brand:hover .bm-dash { animation: dash-run 1.2s linear infinite; }
 @keyframes bm-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @keyframes dash-run { to { stroke-dashoffset: -14; } }
 .brand-word {
@@ -344,7 +344,15 @@ img, svg { display: block; }
 
 /* ---------- Isometric pen illustrations ---------- */
 .scene { grid-area: art; align-self: center; margin: 0; position: relative; }
-.scene svg { width: 100%; height: auto; max-height: 760px; overflow: visible; }
+.scene-stack { position: relative; }
+.scene-stack .layer { display: block; width: 100%; height: auto; max-height: 760px; overflow: visible; }
+.scene-stack .layer + .layer { position: absolute; inset: 0; height: 100%; }
+.scene-stack .moving { will-change: transform; transform: translateZ(0); pointer-events: none; }
+.scene-stack .moving-car { animation: car-drive 14s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .scene-stack .moving-car { animation: none !important; } }
+/* Off-screen or hidden tab: freeze the drawing. */
+.scene-stack.is-paused *, .scene-stack.is-paused { animation-play-state: paused !important; }
+.scene-stack.is-resting .moving:not(.moving-car) * { animation-play-state: paused !important; }
 .iso { overflow: visible; }
 .iso polygon, .iso path, .iso circle, .iso ellipse, .iso line, .iso polyline { stroke: var(--pen); stroke-width: 1.35; stroke-linejoin: round; stroke-linecap: round; }
 .pen { fill: none; }
@@ -375,6 +383,7 @@ img, svg { display: block; }
 .car-wheel { fill: var(--pen); }
 .flag-b { fill: var(--accent); } .flag-a { fill: var(--surface); }
 .wx-v { display: none; }
+.wx-v:not(.on), .wx-v:not(.on) * { animation: none !important; }
 .wx-v.on { display: inline; animation: wx-in .6s var(--ease); }
 @keyframes wx-in { from { opacity: 0; } }
 .f-cloudshadow.is-dense { opacity: .9 !important; }
@@ -440,7 +449,7 @@ img, svg { display: block; }
   position: absolute; left: 16px; bottom: 16px; z-index: 3;
   display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: calc(100% - 90px);
   padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(8px); border: 1px solid var(--line); box-shadow: var(--shadow-1);
+  border: 1px solid var(--line); box-shadow: var(--shadow-1);
   font: 500 12px/1 var(--font-mono); color: var(--ink-2);
 }
 .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -745,6 +754,11 @@ img, svg { display: block; }
 
 /* ---------- Weather glyphs (pen style) ---------- */
 .wx { overflow: visible; }
+/* Glyphs hold still by default and come alive on hover/focus (or in popups) — dozens of
+   continuously animating icons in the timeline, strip and map made the page sluggish. */
+.wx *, .wx { animation-play-state: paused !important; }
+.stop-btn:hover .wx *, .stop-btn:focus-visible .wx *, .feature:hover .wx *, .strip-card:hover .wx *,
+.mk:hover .wx *, .pop-icon .wx *, .f-icon:hover .wx * { animation-play-state: running !important; }
 .wx path, .wx circle, .wx line { stroke-linecap: round; stroke-linejoin: round; }
 .wx-sun-core { fill: var(--w-clear); stroke: var(--pen); stroke-width: 2.2; }
 .wx-rays line { stroke: var(--pen); stroke-width: 2.4; }
