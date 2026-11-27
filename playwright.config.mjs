@@ -20,6 +20,9 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }, testIgnore: /mobile\.spec/ },
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /mobile\.spec/ },
+    // Safari engine (iOS is a primary platform). The offline test is Chrome-only: in WebKit, Playwright
+    // can't replay recorded responses for pages a service worker controls, so it would hit the live APIs.
+    { name: 'iphone-safari', use: { ...devices['iPhone 14'] }, testIgnore: /(mobile|offline)\.spec/ },
   ],
   webServer: {
     command: 'python3 -m http.server 4173',

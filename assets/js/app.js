@@ -368,10 +368,27 @@ function setStep(step) {
 let breaksPref = store.get('wtt-breaks', 'off');
 if (!BREAKS[breaksPref]) breaksPref = 'off';
 
+let lastPlan = null;
+
+function showPlanError(title, text) {
+  $('#errorTitle').textContent = title;
+  $('#errorText').textContent = text;
+  setPhase('error');
+}
+
 async function plan(from, to, depart, { route = 0, breaks = breaksPref } = {}) {
   runCtrl?.abort();
-  runCtrl = new AbortController();
-  const { signal } = runCtrl;
+  const ctrl = new AbortController();
+  runCtrl = ctrl;
+  const { signal } = ctrl;
+  lastPlan = [from, to, depart, { route, breaks }];
+  // Safety net: never leave the spinner up indefinitely.
+  const watchdog = setTimeout(() => {
+    if (runCtrl === ctrl && els.results.dataset.phase === 'loading') {
+      ctrl.abort();
+      showPlanError('This is taking too long', 'The weather or routing service is slow right now. Please try again.');
+    }
+  }, 45000);
 
   els.results.hidden = false;
   setPhase('loading');
@@ -415,14 +432,17 @@ async function plan(from, to, depart, { route = 0, breaks = breaksPref } = {}) {
       }
     }, 450);
   } catch (err) {
-    if (err.name === 'AbortError' || signal.aborted) return;
+    if (signal.aborted) return; // replaced by a newer plan (or the watchdog already reported)
     if (err.kind !== 'noroute' && navigator.onLine) console.error(err);
     const offline = !navigator.onLine;
-    $('#errorTitle').textContent = err.kind === 'noroute' ? 'No road between those two' : offline ? 'You\'re offline' : 'Something went sideways';
-    $('#errorText').textContent = offline
-      ? 'This trip hasn\'t been saved on this device yet. Trips you\'ve already opened work without a signal.'
-      : (err.message || 'Please try again.');
-    setPhase('error');
+    showPlanError(
+      err.kind === 'noroute' ? 'No road between those two' : offline ? 'You\'re offline' : 'Something went sideways',
+      offline
+        ? 'This trip hasn\'t been saved on this device yet. Trips you\'ve already opened work without a signal.'
+        : (err.message || 'Please try again.'),
+    );
+  } finally {
+    clearTimeout(watchdog);
   }
 }
 
@@ -1232,6 +1252,7 @@ const backToPlanner = () => {
 };
 $('#editBtn').addEventListener('click', backToPlanner);
 $('#errorBack').addEventListener('click', backToPlanner);
+$('#errorRetry').addEventListener('click', () => { if (lastPlan) plan(...lastPlan); });
 
 // Installable + works offline (see sw.js).
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
